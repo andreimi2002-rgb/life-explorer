@@ -20,7 +20,7 @@ guessed.
 | M1 Search | GBIF scientific and English common-name search, useful result ordering, loading and error states | Search returns relevant results and empty/error states are clear |
 | M2 Taxon profile | Names, taxonomic status, classification, licensed iNaturalist photo and source links | Search results open a shareable profile with a no-photo fallback |
 | M3 General search and taxonomy explorer (complete) | Shared GBIF client with short-lived in-memory cache, broader search, synonyms/common names, taxon pages, paginated child taxa, navigate to parent/child and browser history | Any available group can be explored through its paginated hierarchy; benchmark groups include Rhinocerotidae, Canidae, Felidae, Fagaceae, Ranidae and Pythonidae |
-| M4a Photos | Resolve a verified Wikipedia/Commons lead image first, then any licensed iNaturalist taxon photo, then the existing no-photo fallback | Benchmark taxa show photos only with author, licence and source link; higher-rank photos identify the member species shown |
+| M4a Photos (implemented on branch) | Resolve a verified Wikipedia/Commons lead image first, then any licensed iNaturalist taxon or observation photo, then the existing no-photo fallback | Benchmark taxa show photos only with author, licence and source link; higher-rank photos identify the member species shown or state when the member is not identifiable |
 | M4b Descriptions (extend) | Existing exact-match Wikipedia lead description; measure coverage, then consider a second exact matching tier, article sections, Wikidata facts, labelled ancestor and data-based fallbacks | Every description or fact shows source, link and licence; uncertain matches are omitted and missing articles have a useful labelled fallback |
 | M4c Extinct vs living | Classify taxa as living, extinct or unknown; distinguish recent extinction from prehistoric/fossil taxa | Profiles and child lists show status accurately, with unknown never treated as living |
 | M4d Information grouping and coverage | Fetch information flags in batches and group children by available information; add kingdom-level coverage reporting | No request per child; grouping remains consistent within pages and low-information taxa stay reachable |
@@ -98,8 +98,11 @@ baseline.
 - Benchmark cheetah (iNaturalist default photo rejected, Wikipedia suitable),
   a taxon only on iNaturalist, a microorganism with no photo, and a taxon whose
   lead image is a map.
-- Wikimedia Commons is a planned source for this milestone; it is not yet an
-  implemented integration.
+- Wikimedia Commons image lookup is now implemented; retain the verification,
+  fallback and attribution requirements above as acceptance criteria.
+- The resolver and mocked fallback cases are implemented on `m4a-photos`;
+  Cheetah was checked against live GBIF, Wikidata, Wikipedia, Commons and
+  iNaturalist APIs.
 
 ### Descriptions (M4b)
 

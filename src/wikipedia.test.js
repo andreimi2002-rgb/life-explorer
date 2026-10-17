@@ -36,6 +36,9 @@ test('loadWikipediaDescription finds the article by exact GBIF key and scientifi
       return response({
         title: 'Tiger',
         extract: 'The tiger is a large cat native to Asia.',
+        originalimage: {
+          source: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/1/12/Tiger.jpg/1200px-Tiger.jpg',
+        },
       })
     }
     throw new Error(`Unexpected request: ${url}`)
@@ -48,6 +51,7 @@ test('loadWikipediaDescription finds the article by exact GBIF key and scientifi
     extract: 'The tiger is a large cat native to Asia.',
     articleUrl: 'https://en.wikipedia.org/wiki/Tiger',
     wikidataUrl: 'http://www.wikidata.org/entity/Q19939',
+    image: { filename: 'Tiger.jpg' },
   })
   assert.match(requestedUrls[0].searchParams.get('query'), /wdt:P846 "5219416"/)
   assert.equal(requestedUrls[1].pathname, '/api/rest_v1/page/summary/Tiger')

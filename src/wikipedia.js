@@ -32,6 +32,39 @@ function createTaxonQuery(key) {
   `
 }
 
+function getImageCandidate(summary) {
+  const source = summary.originalimage?.source || summary.thumbnail?.source
+  if (typeof source !== 'string') return null
+
+  let imageUrl
+  try {
+    imageUrl = new URL(source)
+  } catch {
+    return null
+  }
+  if (
+    imageUrl.protocol !== 'https:' ||
+    !['thumb.wikimedia.org', 'upload.wikimedia.org'].includes(imageUrl.hostname)
+  ) {
+    return null
+  }
+
+  const segments = imageUrl.pathname.split('/').filter(Boolean)
+  const thumbIndex = segments.indexOf('thumb')
+  const filename = thumbIndex >= 0
+    ? segments[thumbIndex + 3]
+    : segments.at(-1)
+  if (!filename) return null
+
+  let decodedFilename
+  try {
+    decodedFilename = decodeURIComponent(filename)
+  } catch {
+    return null
+  }
+  return { filename: decodedFilename }
+}
+
 export async function loadWikipediaDescription(taxon, {
   signal,
   fetchImpl = fetch,
@@ -103,6 +136,7 @@ export async function loadWikipediaDescription(taxon, {
     extract: summary.extract.trim(),
     articleUrl: articleUrl.toString(),
     wikidataUrl: itemUrl.toString(),
+    image: getImageCandidate(summary),
   }
   cache.set(cacheKey, { data: description, expiresAt: Date.now() + CACHE_TTL_MS })
   return description

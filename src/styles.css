@@ -884,6 +884,12 @@ input:focus-visible {
   text-underline-offset: 2px;
 }
 
+.photo-subject {
+  display: block;
+  margin-top: 3px;
+  color: #e3e9df;
+}
+
 .photo-placeholder {
   display: grid;
   place-items: center;
