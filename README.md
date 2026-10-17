@@ -68,6 +68,7 @@ npm install
 npm run dev
 npm test
 npm run build
+npm run coverage -- --per-group 10   # coverage report, separate from the site
 ```
 
 Milestones, acceptance criteria, and source-data rules are in
