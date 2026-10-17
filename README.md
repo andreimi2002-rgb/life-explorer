@@ -7,15 +7,22 @@ than being built separately for individual species.
 
 ## Current features
 
-- GBIF scientific-name suggestions and English common-name search.
+- Ranked GBIF scientific-name results and English common names from GBIF and
+  iNaturalist, cross-checked against an exact accepted GBIF taxon match.
+- Familiar-name matches are prioritized; scientific-name matches stay
+  collapsed unless there are no common-name results.
 - Taxon profiles with common and scientific names, rank, status, and
   navigable classification.
+- Taxonomic child lists omit unranked and non-accepted backbone records.
+- Search URLs preserve the query so returning from a profile restores its
+  result list.
 - iNaturalist photos only when the taxon match, contributor attribution, and a
   Creative Commons licence can be verified; otherwise a clear no-photo fallback.
 - Responsive search and profile pages.
 
-**M3 is in progress:** extending search for broader name coverage and adding
-paginated navigation through taxonomic groups and their child taxa.
+**M3 is in progress:** extending search for broader name coverage, improving
+result quality, and adding paginated navigation through taxonomic groups and
+their child taxa.
 
 ## Data and coverage
 

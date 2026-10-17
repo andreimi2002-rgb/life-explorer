@@ -29,7 +29,9 @@ guessed.
 ## M3 scope and acceptance
 
 - Search scientific names, English common names, and GBIF synonyms where
-  available. Search results are ranked, not treated as a complete list.
+  available. Common names from iNaturalist may be used only after an exact,
+  accepted GBIF name-and-rank match. Results are ranked, not treated as a
+  complete list.
 - Show result totals and paginate larger search result sets rather than silently
   implying a limited first page contains every match.
 - Open taxon profiles for species and higher groups. Browse a group's direct
@@ -44,6 +46,11 @@ guessed.
   requested records/pages; do not bulk-download biodiversity datasets.
 - Keep source errors visible. Unknown, absent, or ambiguous data must not be
   presented as a successful match.
+- Omit unranked and non-accepted GBIF records from user-facing search and child
+  lists; keep scientific-name matches secondary when the query is a familiar
+  name.
+- Keep the current query in the URL so returning from a taxon restores the
+  matching result list instead of the landing page.
 
 ## Workflow and data rules
 
