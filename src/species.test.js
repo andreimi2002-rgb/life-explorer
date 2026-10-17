@@ -80,6 +80,81 @@ test('searchSpecies returns scientific suggestions and matching English common n
   ])
 })
 
+test('searchSpecies expands common names GBIF does not find reliably as single words', async () => {
+  const searchTerms = []
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.pathname.endsWith('/species/suggest')) {
+      return response([])
+    }
+    if (url.pathname.endsWith('/species/search')) {
+      const term = url.searchParams.get('q')
+      searchTerms.push(term)
+      return response({
+        results: term === 'gray wolf'
+          ? [
+              { key: 5219173, scientificName: 'Canis lupus Linnaeus, 1758', rank: 'SPECIES' },
+              { key: 5, scientificName: 'Gray wolf moth', rank: 'SPECIES' },
+            ]
+          : [{ key: 4, scientificName: 'Wolf spider', rank: 'SPECIES' }],
+      })
+    }
+    if (url.pathname.endsWith('/species/5219173/vernacularNames')) {
+      return response({
+        results: [{ language: 'eng', vernacularName: 'Gray Wolf' }],
+      })
+    }
+    if (url.pathname.endsWith('/species/4/vernacularNames')) {
+      return response({
+        results: [{ language: 'eng', vernacularName: 'Thin-legged Wolf Spider' }],
+      })
+    }
+    if (url.pathname.endsWith('/species/5/vernacularNames')) {
+      return response({
+        results: [{ language: 'eng', vernacularName: 'Gray Wolf Moth' }],
+      })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const results = await searchSpecies('wolf', { fetchImpl })
+
+  assert.deepEqual(searchTerms, ['wolf', 'gray wolf'])
+  assert.deepEqual(results.common.slice(0, 3).map((species) => species.scientificName), [
+    'Canis lupus Linnaeus, 1758',
+    'Gray wolf moth',
+    'Wolf spider',
+  ])
+})
+
+test('searchSpecies ranks exact common-name matches and limits results', async () => {
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.pathname.endsWith('/species/suggest')) return response([])
+    if (url.pathname.endsWith('/species/search')) {
+      assert.equal(url.searchParams.get('limit'), '12')
+      return response({
+        results: Array.from({ length: 12 }, (_, index) => ({
+          key: index + 100,
+          scientificName: `Species ${index + 100}`,
+        })),
+      })
+    }
+    const key = Number(url.pathname.split('/').at(-2))
+    return response({
+      results: [{
+        language: 'eng',
+        vernacularName: key === 111 ? 'Jaguar' : `Jaguar flower moth ${key}`,
+      }],
+    })
+  }
+
+  const results = await searchSpecies('jaguar', { fetchImpl })
+
+  assert.equal(results.common.length, 12)
+  assert.equal(results.common[0].key, 111)
+})
+
 test('searchSpecies reports an unsuccessful GBIF response', async () => {
   await assert.rejects(
     searchSpecies('oak', { fetchImpl: async () => response({}, 503) }),

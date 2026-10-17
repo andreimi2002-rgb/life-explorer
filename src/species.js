@@ -1,6 +1,10 @@
 const GBIF_API = 'https://api.gbif.org/v1'
 const GBIF_BACKBONE_KEY = 'd7dddbf4-2cf0-4f39-9b2a-bb099caae36c'
-const RESULT_LIMIT = 8
+const RESULT_LIMIT = 12
+const COMMON_NAME_ALIASES = new Map([
+  ['wolf', ['gray wolf']],
+  ['mouse', ['house mouse']],
+])
 
 async function readResponse(response) {
   if (!response.ok) {
@@ -8,6 +12,17 @@ async function readResponse(response) {
   }
 
   return response.json()
+}
+
+function commonNameScore(names, term) {
+  const normalizedTerm = term.toLocaleLowerCase()
+  return Math.max(...names.map((name) => {
+    const normalizedName = name.toLocaleLowerCase()
+    if (normalizedName === normalizedTerm) return 3
+    if (normalizedName.startsWith(`${normalizedTerm} `)) return 2
+    if (normalizedName.split(/\W+/).includes(normalizedTerm)) return 1
+    return 0
+  }))
 }
 
 export async function searchSpecies(query, { signal, fetchImpl = fetch } = {}) {
@@ -18,30 +33,45 @@ export async function searchSpecies(query, { signal, fetchImpl = fetch } = {}) {
   scientificUrl.search = new URLSearchParams({ q: term, limit: String(RESULT_LIMIT) })
 
   const commonUrl = new URL(`${GBIF_API}/species/search`)
-  commonUrl.search = new URLSearchParams({
-    q: term,
-    qField: 'VERNACULAR',
-    datasetKey: GBIF_BACKBONE_KEY,
-    limit: String(RESULT_LIMIT),
+  const commonTerms = [term, ...(COMMON_NAME_ALIASES.get(term.toLocaleLowerCase()) || [])]
+  const commonUrls = commonTerms.map((commonTerm) => {
+    const url = new URL(commonUrl)
+    url.search = new URLSearchParams({
+      q: commonTerm,
+      qField: 'VERNACULAR',
+      datasetKey: GBIF_BACKBONE_KEY,
+      limit: String(RESULT_LIMIT),
+    })
+    return url
   })
 
-  const [scientificResponse, commonResponse] = await Promise.all([
+  const [scientificResponse, ...commonResponses] = await Promise.all([
     fetchImpl(scientificUrl, { signal }),
-    fetchImpl(commonUrl, { signal }),
+    ...commonUrls.map((url) => fetchImpl(url, { signal })),
   ])
-  const [scientificData, commonData] = await Promise.all([
+  const [scientificData, ...commonData] = await Promise.all([
     readResponse(scientificResponse),
-    readResponse(commonResponse),
+    ...commonResponses.map(readResponse),
   ])
 
-  if (!Array.isArray(scientificData) || !Array.isArray(commonData.results)) {
+  if (!Array.isArray(scientificData) || commonData.some((data) => !Array.isArray(data.results))) {
     throw new Error('GBIF returned an unexpected search response')
   }
 
+  const commonCandidates = new Map()
+  for (const [queryIndex, data] of commonData.entries()) {
+    for (const species of data.results) {
+      if (Number.isInteger(species.key) && species.scientificName) {
+        if (!commonCandidates.has(species.key)) {
+          commonCandidates.set(species.key, { species, queryIndex })
+        }
+      }
+    }
+  }
+
   const common = await Promise.all(
-    commonData.results
-      .filter((species) => Number.isInteger(species.key) && species.scientificName)
-      .map(async (species) => {
+    [...commonCandidates.values()]
+      .map(async ({ species, queryIndex }) => {
         const namesUrl = new URL(`${GBIF_API}/species/${species.key}/vernacularNames`)
         namesUrl.search = new URLSearchParams({ limit: '100' })
         const namesResponse = await fetchImpl(namesUrl, { signal })
@@ -60,15 +90,21 @@ export async function searchSpecies(query, { signal, fetchImpl = fetch } = {}) {
           )
 
         return matchingNames.length
-          ? { ...species, vernacularNames: matchingNames }
+          ? { ...species, vernacularNames: matchingNames, queryIndex }
           : null
       }),
+  )
+  const matchingCommon = common.filter(Boolean)
+  matchingCommon.sort((left, right) =>
+    commonNameScore(right.vernacularNames, commonTerms[right.queryIndex]) -
+      commonNameScore(left.vernacularNames, commonTerms[left.queryIndex]) ||
+    left.queryIndex - right.queryIndex,
   )
 
   return {
     scientific: scientificData.filter(
       (species) => Number.isInteger(species.key) && species.scientificName,
     ),
-    common: common.filter(Boolean),
+    common: matchingCommon.slice(0, RESULT_LIMIT).map(({ queryIndex, ...species }) => species),
   }
 }
