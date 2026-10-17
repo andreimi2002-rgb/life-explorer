@@ -20,7 +20,7 @@ guessed.
 | M1 Search | GBIF scientific and English common-name search, useful result ordering, loading and error states | Search returns relevant results and empty/error states are clear |
 | M2 Taxon profile | Names, taxonomic status, classification, licensed iNaturalist photo and source links | Search results open a shareable profile with a no-photo fallback |
 | M3 General search and taxonomy explorer | Shared GBIF client with short-lived in-memory cache, broader search, synonyms/common names, taxon pages, paginated child taxa, navigate to parent/child and browser history | Any available group can be explored through its paginated hierarchy; benchmark groups include Rhinocerotidae, Canidae, Felidae, Fagaceae, Ranidae and Pythonidae |
-| M4 Species information | Enrich profiles with descriptions and habitat from Wikidata/Wikipedia when identity matching is reliable; show attribution and source links | Supplemental facts link to a confidently matched taxon and absent/uncertain facts are omitted |
+| M4 Wikipedia descriptions | Show English Wikipedia descriptions when Wikidata links an exact GBIF taxon key and scientific name to an article; measure coverage and identify taxa still missing descriptions | Description, Wikipedia article, Wikidata match, and reuse licence are shown only for exact matches; unavailable and ambiguous cases are clearly identified |
 | M5 Distribution map | GBIF occurrence-based map with caveats about observation coverage | Maps load for different taxa and clearly distinguish records from complete range |
 | M6 Learning features | Random taxon, identification quiz, compare taxa and common ancestry | At least two complete, playable modes work with general taxon data |
 | M7 Quality and delivery | Accessibility, responsive polish, PWA, caching/performance, end-to-end tests | Core flows pass automated checks and performance targets |
@@ -63,3 +63,8 @@ guessed.
   contributor and compatible licence can be shown.
 - Supplemental facts must match the selected taxon confidently. Omit facts
   when identity or source attribution is uncertain.
+- Wikipedia descriptions are discovered through the exact GBIF identifier
+  (Wikidata property P846) and must also have an exact scientific-name match
+  (Wikidata property P225). Do not use fuzzy title/name search as a fallback.
+- Record which taxa have and do not have a confidently matched English
+  Wikipedia description before selecting additional sources for M4.

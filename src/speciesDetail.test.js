@@ -211,3 +211,44 @@ test('loadSpeciesDetail uses a selected taxon hint when its GBIF record is incom
   assert.equal(detail.rank, 'FAMILY')
   assert.equal(detail.classification.at(-1).key, 9415)
 })
+
+test('loadSpeciesDetail includes a confidently matched Wikipedia description', async () => {
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/parents')) {
+      return response([{ key: 1, canonicalName: 'Animalia', rank: 'KINGDOM' }])
+    }
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/vernacularNames')) {
+      return response({ results: [] })
+    }
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/species/42')) {
+      return response(baseSpecies())
+    }
+    if (url.hostname === 'api.inaturalist.org') return response({ results: [] })
+    if (url.hostname === 'query.wikidata.org') {
+      return response({
+        results: {
+          bindings: [{
+            item: { value: 'http://www.wikidata.org/entity/Q999' },
+            taxonName: { value: 'Canis lupus' },
+            article: { value: 'https://en.wikipedia.org/wiki/Wolf' },
+          }],
+        },
+      })
+    }
+    if (url.hostname === 'en.wikipedia.org') {
+      return response({ title: 'Wolf', extract: 'The wolf is a large canine.' })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const detail = await loadSpeciesDetail(42, { fetchImpl })
+
+  assert.deepEqual(detail.wikipedia, {
+    title: 'Wolf',
+    extract: 'The wolf is a large canine.',
+    articleUrl: 'https://en.wikipedia.org/wiki/Wolf',
+    wikidataUrl: 'http://www.wikidata.org/entity/Q999',
+  })
+  assert.equal(detail.wikipediaError, '')
+})
