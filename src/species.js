@@ -1,12 +1,29 @@
 import { requestGbif } from './gbif.js'
 
 const GBIF_BACKBONE_KEY = 'd7dddbf4-2cf0-4f39-9b2a-bb099caae36c'
+const INATURALIST_API = 'https://api.inaturalist.org/v1'
 const RESULT_LIMIT = 12
 const COMMON_NAME_ALIASES = new Map([
   ['wolf', ['gray wolf']],
   ['mouse', ['house mouse']],
   ['rhino', ['rhinoceros']],
 ])
+
+function isAcceptedNamedTaxon(taxon) {
+  const status = (taxon.taxonomicStatus || taxon.status || '').toLocaleUpperCase()
+  const rank = taxon.rank?.toLocaleUpperCase()
+  const canonicalName = taxon.canonicalName || taxon.name
+  return Number.isInteger(taxon.key) &&
+    taxon.key > 0 &&
+    typeof taxon.scientificName === 'string' &&
+    typeof canonicalName === 'string' &&
+    canonicalName.trim().length > 0 &&
+    !canonicalName.includes(':') &&
+    rank &&
+    rank !== 'UNRANKED' &&
+    status === 'ACCEPTED' &&
+    taxon.synonym !== true
+}
 
 function commonNameScore(names, term) {
   const normalizedTerm = term.toLocaleLowerCase()
@@ -16,6 +33,61 @@ function commonNameScore(names, term) {
     if (normalizedName.startsWith(`${normalizedTerm} `)) return 2
     if (normalizedName.split(/\W+/).includes(normalizedTerm)) return 1
     return 0
+  }))
+}
+
+async function searchINaturalistCommonNames(term, { signal, fetchImpl }) {
+  const url = new URL(`${INATURALIST_API}/taxa`)
+  url.search = new URLSearchParams({ q: term, per_page: '100' })
+  const response = await fetchImpl(url, { signal })
+  if (!response.ok) {
+    throw new Error(`iNaturalist search failed (${response.status})`)
+  }
+
+  const data = await response.json()
+  if (!Array.isArray(data.results)) {
+    throw new Error('iNaturalist returned an unexpected search response')
+  }
+
+  const candidates = data.results
+    .filter((taxon) =>
+      typeof taxon.name === 'string' &&
+      typeof taxon.rank === 'string' &&
+      typeof taxon.preferred_common_name === 'string' &&
+      (
+        commonNameScore([taxon.preferred_common_name], term) > 0 ||
+        taxon.name.toLocaleLowerCase() === term.toLocaleLowerCase()
+      ),
+    )
+    .sort((left, right) =>
+      commonNameScore([right.preferred_common_name], term) -
+        commonNameScore([left.preferred_common_name], term) ||
+      (right.observations_count || 0) - (left.observations_count || 0),
+    )
+    .slice(0, RESULT_LIMIT)
+
+  return Promise.all(candidates.map(async (taxon) => {
+    const match = await requestGbif('/species/match', {
+      name: taxon.name,
+      rank: taxon.rank.toLocaleUpperCase(),
+    }, { signal, fetchImpl })
+    if (
+      match.matchType !== 'EXACT' ||
+      match.canonicalName !== taxon.name ||
+      match.rank !== taxon.rank.toLocaleUpperCase() ||
+      !isAcceptedNamedTaxon({ ...match, key: match.usageKey })
+    ) {
+      return null
+    }
+
+    return {
+      ...match,
+      key: match.usageKey,
+      vernacularNames: [taxon.preferred_common_name],
+      preferredCommonName: taxon.preferred_common_name,
+      commonNameMatches: commonNameScore([taxon.preferred_common_name], term) > 0,
+      commonNameSource: 'iNaturalist',
+    }
   }))
 }
 
@@ -51,7 +123,7 @@ export async function searchSpecies(query, {
   const commonCandidates = new Map()
   for (const [queryIndex, data] of commonData.entries()) {
     for (const species of data.results) {
-      if (Number.isInteger(species.key) && species.scientificName) {
+      if (isAcceptedNamedTaxon(species)) {
         if (!commonCandidates.has(species.key)) {
           commonCandidates.set(species.key, { species, queryIndex })
         }
@@ -76,7 +148,7 @@ export async function searchSpecies(query, {
         .map((name) => name.vernacularName)
         .filter((name, index, names) =>
           commonTerms.some((commonTerm) =>
-            name.toLocaleLowerCase().includes(commonTerm.toLocaleLowerCase()),
+            commonNameScore([name], commonTerm) > 0,
           ) &&
           names.findIndex((candidate) => candidate.toLocaleLowerCase() === name.toLocaleLowerCase()) === index,
         )
@@ -86,7 +158,35 @@ export async function searchSpecies(query, {
         : null
     }),
   )
+  const scientific = scientificData.filter(isAcceptedNamedTaxon)
   const matchingCommon = common.filter(Boolean)
+  let commonNameWarning = ''
+  try {
+    const iNaturalistMatches = await searchINaturalistCommonNames(term, { signal, fetchImpl })
+    for (const taxon of iNaturalistMatches) {
+      if (!taxon) continue
+      if (!taxon.commonNameMatches) {
+        const scientificIndex = scientific.findIndex((candidate) => candidate.key === taxon.key)
+        if (scientificIndex !== -1) {
+          scientific[scientificIndex] = {
+            ...scientific[scientificIndex],
+            preferredCommonName: taxon.preferredCommonName,
+          }
+        }
+        continue
+      }
+      const existingIndex = matchingCommon.findIndex((candidate) => candidate.key === taxon.key)
+      if (existingIndex === -1) {
+        matchingCommon.push({ ...taxon, queryIndex: 0 })
+      } else if (commonNameScore(taxon.vernacularNames, term) >
+        commonNameScore(matchingCommon[existingIndex].vernacularNames, term)) {
+        matchingCommon[existingIndex] = { ...taxon, queryIndex: 0 }
+      }
+    }
+  } catch (error) {
+    if (signal?.aborted) throw error
+    commonNameWarning = error.message
+  }
   matchingCommon.sort((left, right) =>
     commonNameScore(right.vernacularNames, commonTerms[right.queryIndex]) -
       commonNameScore(left.vernacularNames, commonTerms[left.queryIndex]) ||
@@ -95,13 +195,12 @@ export async function searchSpecies(query, {
   const commonCount = Math.max(0, ...commonData.map((data) => data.count || 0))
 
   return {
-    scientific: scientificData.filter(
-      (species) => Number.isInteger(species.key) && species.scientificName,
-    ),
-    common: matchingCommon.map(({ queryIndex, ...species }) => species),
+    scientific,
+    common: matchingCommon.map(({ queryIndex, commonNameMatches, ...species }) => species),
     commonCount,
     commonOffset,
     commonHasMore: commonData.some((data) => data.endOfRecords === false),
+    commonNameWarning,
   }
 }
 
@@ -127,12 +226,7 @@ export async function loadTaxonChildren(key, {
 
   return {
     results: data.results
-      .filter((taxon) =>
-        Number.isInteger(taxon.key) &&
-        taxon.key > 0 &&
-        (taxon.canonicalName || taxon.name || taxon.scientificName) &&
-        taxon.rank,
-      )
+      .filter(isAcceptedNamedTaxon)
       .map((taxon) => ({
         key: taxon.key,
         canonicalName: taxon.canonicalName || taxon.name || taxon.scientificName,

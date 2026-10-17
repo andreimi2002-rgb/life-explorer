@@ -459,8 +459,38 @@ input:focus-visible {
   font-size: 11px;
 }
 
+.search-results-hint,
+.search-results-warning {
+  margin: 14px 0 0;
+  color: #77837a;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.search-results-warning {
+  color: #844a36;
+}
+
 .result-group {
   padding-top: 29px;
+}
+
+.scientific-results {
+  margin-top: 26px;
+  border-top: 1px solid var(--line);
+}
+
+.scientific-results > summary {
+  padding: 17px 0;
+  color: #536b5c;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  list-style-position: inside;
+}
+
+.scientific-results[open] > .result-group {
+  padding-top: 0;
 }
 
 .group-heading {
@@ -1035,6 +1065,14 @@ input:focus-visible {
 
 .card-heading h2 {
   font-size: 19px;
+}
+
+.children-quality-note {
+  display: block;
+  margin-top: 5px;
+  color: #879188;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .card-heading .eyebrow {

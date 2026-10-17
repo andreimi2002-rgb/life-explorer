@@ -51,21 +51,27 @@ function toTaxonHint(taxon) {
 
 function SearchResults({ results, onSelect, onLoadMore, loadingMore }) {
   const total = results.scientific.length + results.common.length
-  if (!total && !results.commonHasMore) return null
+  if (!total && !results.commonHasMore && !results.commonNameWarning) return null
 
   return (
-    <section className="search-results" aria-label="Search results">
+    <section className="search-results" id="search-results" aria-label="Search results">
       <div className="results-heading">
         <div>
           <span className="eyebrow">The field guide</span>
           <h2>Search results</h2>
         </div>
         <span className="result-count">
-          {total} shown{results.commonCount > results.common.length
-            ? ` · ${results.commonCount.toLocaleString()} common-name records`
-            : ' matches'}
+          {results.common.length} common · {results.scientific.length} scientific
         </span>
       </div>
+      <p className="search-results-hint">
+        Common names are shown first. Scientific-name matches are available below.
+      </p>
+      {results.commonNameWarning && (
+        <p className="search-results-warning" role="status">
+          iNaturalist common-name search failed ({results.commonNameWarning}); showing GBIF matches only.
+        </p>
+      )}
 
       {(results.common.length > 0 || results.commonHasMore) && (
         <section className="result-group" aria-labelledby="common-results-heading">
@@ -107,26 +113,33 @@ function SearchResults({ results, onSelect, onLoadMore, loadingMore }) {
       )}
 
       {results.scientific.length > 0 && (
-        <section className="result-group" aria-labelledby="scientific-results-heading">
-          <div className="group-heading">
-            <h3 id="scientific-results-heading">Scientific names</h3>
-            <span>Matched by taxonomy</span>
-          </div>
-          <ul className="results">
-            {results.scientific.map((species) => (
-              <li key={`scientific-${species.key}`}>
-                <button type="button" className="result-card" onClick={() => onSelect(species)}>
-                  <span className="result-card-top">
-                    <span className="rank-pill">{formatRank(species.rank)}</span>
-                    <span className="result-arrow" aria-hidden="true">↗</span>
-                  </span>
-                  <span className="species-name"><i>{species.canonicalName || species.scientificName}</i></span>
-                  <span className="result-scientific">{species.scientificName}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <details className="scientific-results" open={results.common.length === 0}>
+          <summary>Scientific-name matches ({results.scientific.length})</summary>
+          <section className="result-group" aria-labelledby="scientific-results-heading">
+            <div className="group-heading">
+              <h3 id="scientific-results-heading">Scientific names</h3>
+              <span>Matched by taxonomy</span>
+            </div>
+            <ul className="results">
+              {results.scientific.map((species) => (
+                <li key={`scientific-${species.key}`}>
+                  <button type="button" className="result-card" onClick={() => onSelect(species)}>
+                    <span className="result-card-top">
+                      <span className="rank-pill">{formatRank(species.rank)}</span>
+                      <span className="result-arrow" aria-hidden="true">↗</span>
+                    </span>
+                    <span className="species-name">
+                      {species.preferredCommonName || (
+                        <i>{species.canonicalName || species.scientificName}</i>
+                      )}
+                    </span>
+                    <span className="result-scientific">{species.scientificName}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </details>
       )}
     </section>
   )
@@ -167,6 +180,9 @@ function TaxonChildren({ taxonKey, onSelect }) {
         <div>
           <span className="eyebrow">Continue exploring</span>
           <h2 id="descendants-heading">Child taxa</h2>
+          <p className="children-quality-note">
+            Accepted, named taxa only; unranked GBIF records are omitted.
+          </p>
         </div>
       </div>
 
@@ -245,7 +261,9 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
             <span className="rank-pill">{formatRank(detail.rank)}</span>
             <span className={`status-pill ${accepted ? 'is-accepted' : 'is-other'}`}>
               <span aria-hidden="true" />
-              {formatRank(detail.taxonomicStatus || 'status unavailable')}
+              {accepted
+                ? 'accepted'
+                : `GBIF: ${formatRank(detail.taxonomicStatus || 'status unavailable')}`}
             </span>
           </div>
           <h1>{displayName}</h1>
@@ -412,6 +430,14 @@ function App() {
       setTaxonHint(key && name && rank
         ? { key: Number(key), canonicalName: name, scientificName: name, rank }
         : null)
+      if (!key && url.searchParams.has('q')) {
+        window.requestAnimationFrame(() => {
+          document.getElementById('search-results')?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          })
+        })
+      }
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
@@ -543,7 +569,16 @@ function App() {
     window.history.pushState({}, '', url)
     setSelectedKey('')
     setTaxonHint(null)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    if (term) {
+      window.requestAnimationFrame(() => {
+        document.getElementById('search-results')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        })
+      })
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
   }
 
   const goHome = () => {
@@ -556,17 +591,17 @@ function App() {
 
   const updateQuery = (value) => {
     setQuery(value)
+    const url = new URL(window.location.href)
     if (selectedKey) {
-      const url = new URL(window.location.href)
       url.searchParams.delete('species')
       url.searchParams.delete('taxon')
       url.searchParams.delete('rank')
-      if (value) url.searchParams.set('q', value)
-      else url.searchParams.delete('q')
-      window.history.replaceState({}, '', url)
       setSelectedKey('')
       setTaxonHint(null)
     }
+    if (value) url.searchParams.set('q', value)
+    else url.searchParams.delete('q')
+    window.history.replaceState({}, '', url)
   }
 
   const statusText = term.length < 2 && term

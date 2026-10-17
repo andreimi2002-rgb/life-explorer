@@ -37,8 +37,20 @@ test('searchSpecies returns scientific suggestions and matching English common n
 
     if (url.pathname.endsWith('/species/suggest')) {
       return response([
-        { key: 1, scientificName: 'Canis lupus', canonicalName: 'Canis lupus', rank: 'SPECIES' },
-        { key: 2, scientificName: 'Invalid result' },
+        {
+          key: 1,
+          scientificName: 'Canis lupus',
+          canonicalName: 'Canis lupus',
+          rank: 'SPECIES',
+          status: 'ACCEPTED',
+        },
+        {
+          key: 2,
+          scientificName: 'Doubtful result',
+          canonicalName: 'Doubtful result',
+          rank: 'SPECIES',
+          status: 'DOUBTFUL',
+        },
         { scientificName: 'Missing key' },
       ])
     }
@@ -46,8 +58,20 @@ test('searchSpecies returns scientific suggestions and matching English common n
     if (url.pathname.endsWith('/species/search')) {
       return response({
         results: [
-          { key: 1, scientificName: 'Canis lupus', rank: 'SPECIES' },
-          { key: 3, scientificName: 'Unrelated species', rank: 'SPECIES' },
+          {
+            key: 1,
+            scientificName: 'Canis lupus',
+            canonicalName: 'Canis lupus',
+            rank: 'SPECIES',
+            taxonomicStatus: 'ACCEPTED',
+          },
+          {
+            key: 3,
+            scientificName: 'Red fox',
+            canonicalName: 'Red fox',
+            rank: 'SPECIES',
+            taxonomicStatus: 'ACCEPTED',
+          },
           { scientificName: 'Missing key' },
         ],
         count: 3,
@@ -77,12 +101,14 @@ test('searchSpecies returns scientific suggestions and matching English common n
   const results = await searchSpecies('wolf', { fetchImpl })
 
   assert.equal(requestedUrls.find((url) => url.pathname.endsWith('/species/search')).searchParams.get('qField'), 'VERNACULAR')
-  assert.deepEqual(results.scientific.map((species) => species.scientificName), ['Canis lupus', 'Invalid result'])
+  assert.deepEqual(results.scientific.map((species) => species.scientificName), ['Canis lupus'])
   assert.deepEqual(results.common, [
     {
       key: 1,
       scientificName: 'Canis lupus',
+      canonicalName: 'Canis lupus',
       rank: 'SPECIES',
+      taxonomicStatus: 'ACCEPTED',
       vernacularNames: ['Gray Wolf'],
     },
   ])
@@ -103,10 +129,28 @@ test('searchSpecies expands common names GBIF does not find reliably as single w
       return response({
         results: term === 'gray wolf'
           ? [
-              { key: 5219173, scientificName: 'Canis lupus Linnaeus, 1758', rank: 'SPECIES' },
-              { key: 5, scientificName: 'Gray wolf moth', rank: 'SPECIES' },
+              {
+                key: 5219173,
+                scientificName: 'Canis lupus Linnaeus, 1758',
+                canonicalName: 'Canis lupus',
+                rank: 'SPECIES',
+                taxonomicStatus: 'ACCEPTED',
+              },
+              {
+                key: 5,
+                scientificName: 'Gray wolf moth',
+                canonicalName: 'Gray wolf moth',
+                rank: 'SPECIES',
+                taxonomicStatus: 'ACCEPTED',
+              },
             ]
-          : [{ key: 4, scientificName: 'Wolf spider', rank: 'SPECIES' }],
+          : [{
+              key: 4,
+              scientificName: 'Wolf spider',
+              canonicalName: 'Wolf spider',
+              rank: 'SPECIES',
+              taxonomicStatus: 'ACCEPTED',
+            }],
         count: 1,
         endOfRecords: true,
       })
@@ -149,6 +193,9 @@ test('searchSpecies ranks exact common-name matches and limits results', async (
         results: Array.from({ length: 12 }, (_, index) => ({
           key: index + 100,
           scientificName: `Species ${index + 100}`,
+          canonicalName: `Species ${index + 100}`,
+          rank: 'SPECIES',
+          taxonomicStatus: 'ACCEPTED',
         })),
         count: 13,
         endOfRecords: false,
@@ -179,7 +226,13 @@ test('searchSpecies paginates common names using the requested offset', async ()
     if (url.pathname.endsWith('/species/search')) {
       searchOffsets.push(url.searchParams.get('offset'))
       return response({
-        results: [{ key: 61, scientificName: 'Panthera leo', rank: 'SPECIES' }],
+        results: [{
+          key: 61,
+          scientificName: 'Panthera leo',
+          canonicalName: 'Panthera leo',
+          rank: 'SPECIES',
+          taxonomicStatus: 'ACCEPTED',
+        }],
         count: 30,
         endOfRecords: false,
       })
@@ -207,7 +260,13 @@ test('searchSpecies expands the rhino common-name search to rhinoceros', async (
       searchTerms.push(term)
       return response({
         results: term === 'rhinoceros'
-          ? [{ key: 9415, scientificName: 'Rhinocerotidae', rank: 'FAMILY' }]
+          ? [{
+              key: 9415,
+              scientificName: 'Rhinocerotidae',
+              canonicalName: 'Rhinocerotidae',
+              rank: 'FAMILY',
+              taxonomicStatus: 'ACCEPTED',
+            }]
           : [],
         count: 1,
         endOfRecords: true,
@@ -223,6 +282,105 @@ test('searchSpecies expands the rhino common-name search to rhinoceros', async (
 
   assert.deepEqual(searchTerms, ['rhino', 'rhinoceros'])
   assert.equal(results.common[0].key, 9415)
+})
+
+test('searchSpecies finds common-name matches iNaturalist has but GBIF search misses', async () => {
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.pathname.endsWith('/species/suggest')) return response([])
+    if (url.pathname.endsWith('/species/search')) {
+      return response({ results: [], count: 0, endOfRecords: true })
+    }
+    if (url.hostname === 'api.inaturalist.org') {
+      return response({
+        results: [{
+          name: 'Panthera tigris',
+          rank: 'species',
+          preferred_common_name: 'Tiger',
+          observations_count: 9000,
+        }],
+      })
+    }
+    if (url.pathname.endsWith('/species/match')) {
+      assert.equal(url.searchParams.get('name'), 'Panthera tigris')
+      return response({
+        usageKey: 5219416,
+        scientificName: 'Panthera tigris (Linnaeus, 1758)',
+        canonicalName: 'Panthera tigris',
+        rank: 'SPECIES',
+        status: 'ACCEPTED',
+        matchType: 'EXACT',
+      })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const results = await searchSpecies('tiger', { fetchImpl })
+
+  assert.equal(results.common[0].key, 5219416)
+  assert.equal(results.common[0].preferredCommonName, 'Tiger')
+  assert.deepEqual(results.common[0].vernacularNames, ['Tiger'])
+  assert.equal(results.common[0].commonNameSource, 'iNaturalist')
+})
+
+test('searchSpecies adds an English common name to an exact scientific-name result', async () => {
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.pathname.endsWith('/species/suggest')) {
+      return response([{
+        key: 5219416,
+        scientificName: 'Panthera tigris (Linnaeus, 1758)',
+        canonicalName: 'Panthera tigris',
+        rank: 'SPECIES',
+        status: 'ACCEPTED',
+      }])
+    }
+    if (url.pathname.endsWith('/species/search')) {
+      return response({ results: [], count: 0, endOfRecords: true })
+    }
+    if (url.hostname === 'api.inaturalist.org') {
+      return response({
+        results: [{
+          name: 'Panthera tigris',
+          rank: 'species',
+          preferred_common_name: 'Tiger',
+          observations_count: 9000,
+        }],
+      })
+    }
+    if (url.pathname.endsWith('/species/match')) {
+      return response({
+        usageKey: 5219416,
+        scientificName: 'Panthera tigris (Linnaeus, 1758)',
+        canonicalName: 'Panthera tigris',
+        rank: 'SPECIES',
+        status: 'ACCEPTED',
+        matchType: 'EXACT',
+      })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const results = await searchSpecies('Panthera tigris', { fetchImpl })
+
+  assert.equal(results.scientific[0].preferredCommonName, 'Tiger')
+  assert.deepEqual(results.common, [])
+})
+
+test('searchSpecies keeps GBIF results and exposes an iNaturalist search warning', async () => {
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.pathname.endsWith('/species/suggest')) return response([])
+    if (url.pathname.endsWith('/species/search')) {
+      return response({ results: [], count: 0, endOfRecords: true })
+    }
+    if (url.hostname === 'api.inaturalist.org') return response({}, 503)
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const results = await searchSpecies('tiger', { fetchImpl })
+
+  assert.match(results.commonNameWarning, /iNaturalist search failed \(503\)/)
 })
 
 test('searchSpecies reports an unsuccessful GBIF response', async () => {
@@ -245,7 +403,21 @@ test('loadTaxonChildren returns navigable taxon records and page metadata', asyn
           rank: 'GENUS',
           taxonomicStatus: 'ACCEPTED',
         },
-        { key: 0, canonicalName: 'Invalid key', rank: 'GENUS' },
+        {
+          key: 9418,
+          canonicalName: 'BOLD:ADL8888',
+          scientificName: 'BOLD:ADL8888',
+          rank: 'UNRANKED',
+          taxonomicStatus: 'ACCEPTED',
+        },
+        {
+          key: 9419,
+          canonicalName: 'Doubtful genus',
+          scientificName: 'Doubtful genus',
+          rank: 'GENUS',
+          taxonomicStatus: 'DOUBTFUL',
+        },
+        { key: 0, canonicalName: 'Invalid key', scientificName: 'Invalid key', rank: 'GENUS', taxonomicStatus: 'ACCEPTED' },
         { key: 9417, name: 'Missing rank' },
       ],
       offset: 24,

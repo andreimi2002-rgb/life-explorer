@@ -105,6 +105,48 @@ test('loadSpeciesDetail includes attribution and license for a matching CC photo
   assert.equal(detail.preferredCommonName, 'Gray Wolf')
 })
 
+test('loadSpeciesDetail shows the exact tiger taxon photo with attribution and license', async () => {
+  const tiger = {
+    key: 5219416,
+    scientificName: 'Panthera tigris (Linnaeus, 1758)',
+    canonicalName: 'Panthera tigris',
+    rank: 'SPECIES',
+    taxonomicStatus: 'ACCEPTED',
+    kingdom: 'Animalia',
+  }
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.pathname.endsWith('/parents')) {
+      return response([{ key: 1, canonicalName: 'Animalia', rank: 'KINGDOM' }])
+    }
+    if (url.pathname.endsWith('/vernacularNames')) return response({ results: [] })
+    if (url.pathname.endsWith('/taxa')) {
+      return response({
+        results: [{
+          name: 'Panthera tigris',
+          rank: 'species',
+          preferred_common_name: 'Tiger',
+          default_photo: {
+            id: 13207883,
+            license_code: 'cc-by-nc',
+            medium_url: 'https://images.example/tiger.jpg',
+            attribution: 'Photo by contributor (CC BY-NC)',
+          },
+        }],
+      })
+    }
+    if (url.pathname.endsWith('/species/5219416')) return response(tiger)
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const detail = await loadSpeciesDetail(5219416, { fetchImpl })
+
+  assert.equal(detail.preferredCommonName, 'Tiger')
+  assert.equal(detail.photo.url, 'https://images.example/tiger.jpg')
+  assert.equal(detail.photo.license, 'CC-BY-NC')
+  assert.equal(detail.photo.attribution, 'Photo by contributor (CC BY-NC)')
+})
+
 test('loadSpeciesDetail leaves a clear no-photo fallback when no compatible image exists', async () => {
   const photoResults = [{
     name: 'Canis lupus',
