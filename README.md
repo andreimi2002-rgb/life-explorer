@@ -9,6 +9,9 @@ Explore the tree of life: search any species, browse its taxonomy, see maps and 
 
 No API keys are required.
 
+Species search supports scientific-name autocomplete and English common-name
+search through GBIF. Select a result to view its names and GBIF record.
+
 ## Development
 ```
 npm install
