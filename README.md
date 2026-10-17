@@ -19,13 +19,17 @@ than being built separately for individual species.
 - English Wikipedia descriptions appear when Wikidata links the exact GBIF
   taxon key and scientific name to an article; the article, Wikidata match, and
   reuse licence are shown alongside the text.
-- iNaturalist photos only when the taxon match, contributor attribution, and a
-  Creative Commons licence can be verified; otherwise a clear no-photo fallback.
+- Profile photos are selected from verified Wikipedia/Wikimedia Commons lead
+  images first, then licensed iNaturalist taxon or observation photos; otherwise
+  a clear no-photo fallback appears. Every displayed image shows its author,
+  licence, source link and, where needed, the represented member taxon.
 - Responsive search and profile pages.
 
-**M4 is in progress:** connecting exact GBIF taxa to English Wikipedia articles
-through Wikidata, then measuring which taxa still lack descriptions before
-choosing additional sources.
+**M3 is complete.** M4a photo selection is implemented on the `m4a-photos`
+branch: profiles prefer a verified Commons lead image, then an iNaturalist
+photo with a reusable licence and attribution. The exact-match Wikipedia lead
+description (the baseline for M4b) is already available; measuring its coverage
+and extending descriptions comes next.
 
 ## Data and coverage
 
@@ -38,16 +42,22 @@ taxon and source; uncertain supplemental facts are omitted.
 
 ## Data sources
 
-- [GBIF](https://www.gbif.org) — names, taxonomic classification, and
-  occurrence records.
+- [GBIF](https://www.gbif.org) — names and taxonomic classification.
 - [iNaturalist](https://www.inaturalist.org) — taxon names and licensed photos
   with contributor attribution.
 - [Wikidata](https://www.wikidata.org) — links GBIF taxon identifiers to
   matching Wikipedia articles.
 - [Wikipedia](https://www.wikipedia.org) — English descriptions, shown with
   article attribution and licence information.
-- [Catalogue of Life](https://www.catalogueoflife.org) — an additional
-  taxonomic reference for future data reconciliation.
+- [Wikimedia Commons](https://commons.wikimedia.org) — lead images with verified
+  author, reuse licence, and source link.
+
+Planned, not yet integrated:
+
+- [Catalogue of Life](https://www.catalogueoflife.org) — possible future
+  taxonomic reference for data reconciliation.
+- Paleobiology Database and Wikispecies — candidates to assess after measuring
+  information coverage; not currently connected.
 
 No API keys are required for the current integrations.
 
@@ -62,5 +72,6 @@ npm run build
 
 Milestones, acceptance criteria, and source-data rules are in
 [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md). Work is developed on one branch
-per milestone, tested, and deployed to a Netlify Deploy Preview before merge.
-Production merges require explicit approval.
+per milestone and checked with a Netlify Deploy Preview. Never merge or push to
+`main`: production deployments cost Netlify credits, and the owner's budget is
+limited. Deploy Previews are free.

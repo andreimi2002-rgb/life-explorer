@@ -51,6 +51,7 @@ function createFetch({ photoResults = [], photoError = false } = {}) {
             }],
       })
     }
+    if (url.pathname.endsWith('/observations')) return response({ results: [] })
     if (url.pathname.endsWith('/species/42')) return response(baseSpecies())
     throw new Error(`Unexpected request: ${url}`)
   }
@@ -78,16 +79,18 @@ test('loadSpeciesDetail includes attribution and license for a matching CC photo
     {
       name: 'Canis familiaris',
       rank: 'species',
+      id: 9001,
       default_photo: { id: 11, license_code: 'cc-by', medium_url: 'https://images.example/dog.jpg' },
     },
     {
       name: 'Canis lupus',
       rank: 'species',
+      id: 9002,
       preferred_common_name: 'Gray Wolf',
       default_photo: {
         id: 12,
         license_code: 'cc-by-nc',
-        medium_url: 'https://images.example/wolf.jpg',
+        medium_url: 'https://inaturalist-open-data.s3.amazonaws.com/photos/12/medium.jpg',
         attribution: 'Photo by Alex (CC BY-NC)',
       },
     },
@@ -96,11 +99,14 @@ test('loadSpeciesDetail includes attribution and license for a matching CC photo
   const detail = await loadSpeciesDetail(42, { fetchImpl })
 
   assert.deepEqual(detail.photo, {
-    url: 'https://images.example/wolf.jpg',
+    url: 'https://inaturalist-open-data.s3.amazonaws.com/photos/12/medium.jpg',
     pageUrl: 'https://www.inaturalist.org/photos/12',
     attribution: 'Photo by Alex (CC BY-NC)',
     license: 'CC-BY-NC',
     licenseUrl: 'https://creativecommons.org/licenses/by-nc/4.0/',
+    source: 'iNaturalist',
+    subjectName: '',
+    representative: false,
   })
   assert.equal(detail.preferredCommonName, 'Gray Wolf')
 })
@@ -125,11 +131,12 @@ test('loadSpeciesDetail shows the exact tiger taxon photo with attribution and l
         results: [{
           name: 'Panthera tigris',
           rank: 'species',
+          id: 41955,
           preferred_common_name: 'Tiger',
           default_photo: {
             id: 13207883,
             license_code: 'cc-by-nc',
-            medium_url: 'https://images.example/tiger.jpg',
+            medium_url: 'https://inaturalist-open-data.s3.amazonaws.com/photos/13207883/medium.jpg',
             attribution: 'Photo by contributor (CC BY-NC)',
           },
         }],
@@ -142,19 +149,21 @@ test('loadSpeciesDetail shows the exact tiger taxon photo with attribution and l
   const detail = await loadSpeciesDetail(5219416, { fetchImpl })
 
   assert.equal(detail.preferredCommonName, 'Tiger')
-  assert.equal(detail.photo.url, 'https://images.example/tiger.jpg')
+  assert.equal(detail.photo.url, 'https://inaturalist-open-data.s3.amazonaws.com/photos/13207883/medium.jpg')
   assert.equal(detail.photo.license, 'CC-BY-NC')
   assert.equal(detail.photo.attribution, 'Photo by contributor (CC BY-NC)')
+  assert.equal(detail.photo.source, 'iNaturalist')
 })
 
 test('loadSpeciesDetail leaves a clear no-photo fallback when no compatible image exists', async () => {
   const photoResults = [{
     name: 'Canis lupus',
     rank: 'species',
+    id: 9002,
     default_photo: {
       id: 13,
       license_code: null,
-      medium_url: 'https://images.example/unlicensed.jpg',
+      medium_url: 'https://inaturalist-open-data.s3.amazonaws.com/photos/13/medium.jpg',
       attribution: 'All rights reserved',
     },
   }]
@@ -249,6 +258,7 @@ test('loadSpeciesDetail includes a confidently matched Wikipedia description', a
     extract: 'The wolf is a large canine.',
     articleUrl: 'https://en.wikipedia.org/wiki/Wolf',
     wikidataUrl: 'http://www.wikidata.org/entity/Q999',
+    image: null,
   })
   assert.equal(detail.wikipediaError, '')
 })

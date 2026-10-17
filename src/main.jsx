@@ -281,26 +281,42 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
         <figure className={`species-photo ${detail.photo ? '' : 'photo-placeholder'}`}>
           {detail.photo ? (
             <>
-              <img src={detail.photo.url} alt={`Licensed photograph of ${detail.canonicalName}`} />
+              <img
+                src={detail.photo.url}
+                alt={`Licensed photograph of ${detail.photo.subjectName || detail.canonicalName}`}
+              />
               <figcaption>
-                <a href={detail.photo.pageUrl} target="_blank" rel="noreferrer">
-                  {detail.photo.attribution || 'Photo contributor'}
-                </a>
-                {' · '}
-                <a href={detail.photo.licenseUrl} target="_blank" rel="noreferrer">
-                  {detail.photo.license}
-                </a>
+                <span>
+                  <a href={detail.photo.pageUrl} target="_blank" rel="noreferrer">
+                    {detail.photo.attribution}
+                  </a>
+                  {' · '}
+                  <a href={detail.photo.licenseUrl} target="_blank" rel="noreferrer">
+                    {detail.photo.license}
+                  </a>
+                  {' · '}
+                  <a href={detail.photo.pageUrl} target="_blank" rel="noreferrer">
+                    {detail.photo.source}
+                  </a>
+                </span>
+                {(detail.photo.subjectName || detail.photo.representative) && (
+                  <span className="photo-subject">
+                    {detail.photo.subjectName
+                      ? `Shows ${detail.photo.subjectName}`
+                      : 'Representative image; member species not identified'}
+                  </span>
+                )}
               </figcaption>
             </>
           ) : (
-            <div className="photo-fallback" role="img" aria-label="No licensed photograph available">
+            <div className="photo-fallback" role="img" aria-label="No verified photograph available">
               <span className="fallback-orbit orbit-one" />
               <span className="fallback-orbit orbit-two" />
               <span className="fallback-plant">✳</span>
               <span className="fallback-caption">
                 {detail.photoError
-                  ? 'Could not load a licensed photo right now.'
-                  : 'No licensed photo available yet.'}
+                  ? 'Could not load a verified photo right now.'
+                  : 'No photo with verified attribution and reuse terms is available yet.'}
               </span>
             </div>
           )}
@@ -411,7 +427,7 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
       <TaxonChildren taxonKey={detail.key} onSelect={onNavigateTaxon} />
       <p className="detail-attribution">
         Classification and names: <a href="https://www.gbif.org" target="_blank" rel="noreferrer">GBIF</a>.
-        {' '}Photographs are shown only when a Creative Commons licence is available.
+        {' '}Photographs are shown only when attribution and reuse terms can be verified.
       </p>
     </article>
   )
@@ -688,7 +704,7 @@ function App() {
               <section className="detail-loading" role="status">
                 <span className="loading-orb" />
                 <h1>Looking up this organism…</h1>
-                <p>Gathering its classification, description and licensed photos.</p>
+                <p>Gathering its classification, description and verified photos.</p>
               </section>
             )}
             {detailStatus === 'error' && (
@@ -834,7 +850,7 @@ function App() {
           </div>
         </div>
         <div className="footer-bottom">
-          <span>Data provided by GBIF, iNaturalist, Wikidata and Wikipedia.</span>
+          <span>Data provided by GBIF, iNaturalist, Wikidata, Wikipedia and Wikimedia Commons.</span>
           <span>For the endlessly curious <span aria-hidden="true">✳</span></span>
         </div>
       </footer>

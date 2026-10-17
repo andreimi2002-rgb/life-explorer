@@ -1,72 +1,6 @@
 import { requestGbif } from './gbif.js'
+import { resolvePhoto } from './photos.js'
 import { loadWikipediaDescription } from './wikipedia.js'
-
-const INATURALIST_API = 'https://api.inaturalist.org/v1'
-const PHOTO_LICENSES = new Set([
-  'cc0',
-  'cc-by',
-  'cc-by-sa',
-  'cc-by-nc',
-  'cc-by-nc-sa',
-  'cc-by-nd',
-  'cc-by-nc-nd',
-])
-
-async function readResponse(response) {
-  if (!response.ok) {
-    throw new Error(`iNaturalist request failed (${response.status})`)
-  }
-
-  return response.json()
-}
-
-function getLicenseUrl(licenseCode) {
-  return licenseCode === 'cc0'
-    ? 'https://creativecommons.org/publicdomain/zero/1.0/'
-    : `https://creativecommons.org/licenses/${licenseCode.replace('cc-', '')}/4.0/`
-}
-
-async function loadLicensedPhoto(species, { signal, fetchImpl }) {
-  const url = new URL(`${INATURALIST_API}/taxa`)
-  url.search = new URLSearchParams({
-    q: species.canonicalName,
-    rank: species.rank.toLocaleLowerCase(),
-    per_page: '20',
-  })
-  const response = await fetchImpl(url, { signal })
-  const data = await readResponse(response)
-
-  if (!Array.isArray(data.results)) {
-    throw new Error('iNaturalist returned an unexpected photo response')
-  }
-
-  const taxa = data.results.filter((taxon) =>
-    taxon.name === species.canonicalName &&
-    taxon.rank?.toLocaleUpperCase() === species.rank,
-  )
-  const preferredCommonName = taxa.find((taxon) => taxon.preferred_common_name)
-    ?.preferred_common_name || ''
-  const match = taxa.find((taxon) =>
-    taxon.default_photo &&
-    typeof taxon.default_photo.attribution === 'string' &&
-    taxon.default_photo.attribution.trim() &&
-    PHOTO_LICENSES.has(taxon.default_photo.license_code),
-  )
-
-  if (!match) return { photo: null, preferredCommonName }
-
-  const photo = match.default_photo
-  return {
-    photo: {
-      url: photo.medium_url || photo.url,
-      pageUrl: `https://www.inaturalist.org/photos/${photo.id}`,
-      attribution: photo.attribution,
-      license: photo.license_code.toLocaleUpperCase(),
-      licenseUrl: getLicenseUrl(photo.license_code),
-    },
-    preferredCommonName,
-  }
-}
 
 export async function loadSpeciesDetail(key, {
   signal,
@@ -112,24 +46,30 @@ export async function loadSpeciesDetail(key, {
   let preferredCommonName = ''
   let wikipedia = null
   let wikipediaError = ''
-  const photoPromise = loadLicensedPhoto(species, { signal, fetchImpl })
-    .then((iNaturalist) => {
-      photo = iNaturalist.photo
-      preferredCommonName = iNaturalist.preferredCommonName
+  const wikipediaPromise = loadWikipediaDescription(species, { signal, fetchImpl })
+    .then((description) => ({ description, error: '' }))
+    .catch((error) => {
+      if (signal?.aborted) throw error
+      return { description: null, error: error.message }
+    })
+  const photoPromise = wikipediaPromise
+    .then(({ description }) => resolvePhoto(species, {
+      wikipedia: description,
+      signal,
+      fetchImpl,
+    }))
+    .then((result) => {
+      photo = result.photo
+      photoError = result.photoError
+      preferredCommonName = result.preferredCommonName
     })
     .catch((error) => {
       if (signal?.aborted) throw error
       photoError = error.message
     })
-  const wikipediaPromise = loadWikipediaDescription(species, { signal, fetchImpl })
-    .then((description) => {
-      wikipedia = description
-    })
-    .catch((error) => {
-      if (signal?.aborted) throw error
-      wikipediaError = error.message
-    })
-  await Promise.all([photoPromise, wikipediaPromise])
+  const [wikipediaResult] = await Promise.all([wikipediaPromise, photoPromise])
+  wikipedia = wikipediaResult.description
+  wikipediaError = wikipediaResult.error
 
   return {
     ...species,
