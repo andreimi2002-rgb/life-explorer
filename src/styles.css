@@ -16,6 +16,54 @@ main {
   line-height: 1.6;
 }
 
+input[type='search'] {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid #78917e;
+  border-radius: 0.35rem;
+  color: inherit;
+  font: inherit;
+}
+
+input[type='search']:focus-visible,
+button:focus-visible {
+  outline: 3px solid #0b5d2a;
+  outline-offset: 2px;
+}
+
+.results {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.results button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #c2d1c5;
+  border-radius: 0.35rem;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.results button:hover {
+  background: #e8f3e9;
+}
+
+.species-name {
+  font-weight: 600;
+}
+
 a {
   color: #0b5d2a;
 }
