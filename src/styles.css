@@ -944,6 +944,41 @@ input:focus-visible {
   background: #fff;
 }
 
+.wikipedia-card {
+  margin-top: 17px;
+}
+
+.wikipedia-card .card-heading {
+  margin-bottom: 14px;
+}
+
+.wikipedia-extract {
+  margin: 0;
+  color: #4f5f53;
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.75;
+}
+
+.wikipedia-attribution,
+.wikipedia-empty,
+.wikipedia-unavailable {
+  margin: 15px 0 0;
+  color: #7b877d;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.wikipedia-attribution a {
+  color: #496e52;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.wikipedia-unavailable {
+  color: #844a36;
+}
+
 .descendants-card {
   margin-top: 16px;
 }

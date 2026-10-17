@@ -16,13 +16,16 @@ than being built separately for individual species.
 - Taxonomic child lists omit unranked and non-accepted backbone records.
 - Search URLs preserve the query so returning from a profile restores its
   result list.
+- English Wikipedia descriptions appear when Wikidata links the exact GBIF
+  taxon key and scientific name to an article; the article, Wikidata match, and
+  reuse licence are shown alongside the text.
 - iNaturalist photos only when the taxon match, contributor attribution, and a
   Creative Commons licence can be verified; otherwise a clear no-photo fallback.
 - Responsive search and profile pages.
 
-**M3 is in progress:** extending search for broader name coverage, improving
-result quality, and adding paginated navigation through taxonomic groups and
-their child taxa.
+**M4 is in progress:** connecting exact GBIF taxa to English Wikipedia articles
+through Wikidata, then measuring which taxa still lack descriptions before
+choosing additional sources.
 
 ## Data and coverage
 
@@ -39,9 +42,10 @@ taxon and source; uncertain supplemental facts are omitted.
   occurrence records.
 - [iNaturalist](https://www.inaturalist.org) — taxon names and licensed photos
   with contributor attribution.
-- [Wikidata](https://www.wikidata.org) and [Wikipedia](https://www.wikipedia.org)
-  — planned supplemental descriptions and habitat information, with source
-  links when a reliable taxon match is available.
+- [Wikidata](https://www.wikidata.org) — links GBIF taxon identifiers to
+  matching Wikipedia articles.
+- [Wikipedia](https://www.wikipedia.org) — English descriptions, shown with
+  article attribution and licence information.
 - [Catalogue of Life](https://www.catalogueoflife.org) — an additional
   taxonomic reference for future data reconciliation.
 

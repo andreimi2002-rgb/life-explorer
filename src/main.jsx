@@ -307,6 +307,40 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
         </figure>
       </section>
 
+      <section className="detail-card wikipedia-card" aria-labelledby="about-heading">
+        <div className="card-heading">
+          <span className="card-icon" aria-hidden="true">✎</span>
+          <div>
+            <span className="eyebrow">About this taxon</span>
+            <h2 id="about-heading">What is it?</h2>
+          </div>
+        </div>
+        {detail.wikipedia ? (
+          <>
+            <p className="wikipedia-extract">{detail.wikipedia.extract}</p>
+            <p className="wikipedia-attribution">
+              From the Wikipedia article{' '}
+              <a href={detail.wikipedia.articleUrl} target="_blank" rel="noreferrer">
+                “{detail.wikipedia.title}”
+              </a>
+              {' '}· Matched through{' '}
+              <a href={detail.wikipedia.wikidataUrl} target="_blank" rel="noreferrer">Wikidata</a>
+              {' '}· Text available under{' '}
+              <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">
+                CC BY-SA
+              </a>
+              .
+            </p>
+          </>
+        ) : (
+          <p className={detail.wikipediaError ? 'wikipedia-unavailable' : 'wikipedia-empty'}>
+            {detail.wikipediaError
+              ? `Wikipedia description could not be loaded (${detail.wikipediaError}).`
+              : 'No confidently matched English Wikipedia description is available for this taxon.'}
+          </p>
+        )}
+      </section>
+
       <div className="detail-grid">
         <section className="detail-card taxonomy-card" aria-labelledby="classification-heading">
           <div className="card-heading">
@@ -654,7 +688,7 @@ function App() {
               <section className="detail-loading" role="status">
                 <span className="loading-orb" />
                 <h1>Looking up this organism…</h1>
-                <p>Gathering its classification and licensed photos.</p>
+                <p>Gathering its classification, description and licensed photos.</p>
               </section>
             )}
             {detailStatus === 'error' && (
@@ -800,7 +834,7 @@ function App() {
           </div>
         </div>
         <div className="footer-bottom">
-          <span>Data provided by GBIF and iNaturalist.</span>
+          <span>Data provided by GBIF, iNaturalist, Wikidata and Wikipedia.</span>
           <span>For the endlessly curious <span aria-hidden="true">✳</span></span>
         </div>
       </footer>

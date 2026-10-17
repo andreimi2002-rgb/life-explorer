@@ -1,4 +1,5 @@
 import { requestGbif } from './gbif.js'
+import { loadWikipediaDescription } from './wikipedia.js'
 
 const INATURALIST_API = 'https://api.inaturalist.org/v1'
 const PHOTO_LICENSES = new Set([
@@ -109,14 +110,26 @@ export async function loadSpeciesDetail(key, {
   let photo = null
   let photoError = ''
   let preferredCommonName = ''
-  try {
-    const iNaturalist = await loadLicensedPhoto(species, { signal, fetchImpl })
-    photo = iNaturalist.photo
-    preferredCommonName = iNaturalist.preferredCommonName
-  } catch (error) {
-    if (signal?.aborted) throw error
-    photoError = error.message
-  }
+  let wikipedia = null
+  let wikipediaError = ''
+  const photoPromise = loadLicensedPhoto(species, { signal, fetchImpl })
+    .then((iNaturalist) => {
+      photo = iNaturalist.photo
+      preferredCommonName = iNaturalist.preferredCommonName
+    })
+    .catch((error) => {
+      if (signal?.aborted) throw error
+      photoError = error.message
+    })
+  const wikipediaPromise = loadWikipediaDescription(species, { signal, fetchImpl })
+    .then((description) => {
+      wikipedia = description
+    })
+    .catch((error) => {
+      if (signal?.aborted) throw error
+      wikipediaError = error.message
+    })
+  await Promise.all([photoPromise, wikipediaPromise])
 
   return {
     ...species,
@@ -132,5 +145,7 @@ export async function loadSpeciesDetail(key, {
     ],
     photo,
     photoError,
+    wikipedia,
+    wikipediaError,
   }
 }
