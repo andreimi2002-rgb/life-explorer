@@ -129,7 +129,7 @@ test('loadSpeciesDetail exposes a photo service error while keeping the taxon re
 
   assert.equal(detail.canonicalName, 'Canis lupus')
   assert.equal(detail.photo, null)
-  assert.match(detail.photoError, /Species data request failed \(503\)/)
+  assert.match(detail.photoError, /iNaturalist request failed \(503\)/)
 })
 
 test('loadSpeciesDetail reports GBIF errors and rejects invalid keys', async () => {
@@ -139,6 +139,33 @@ test('loadSpeciesDetail reports GBIF errors and rejects invalid keys', async () 
   )
   await assert.rejects(
     loadSpeciesDetail(42, { fetchImpl: async () => response({}, 503) }),
-    /Species data request failed \(503\)/,
+    /GBIF request failed \(503\)/,
   )
+})
+
+test('loadSpeciesDetail uses a selected taxon hint when its GBIF record is incomplete', async () => {
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.pathname.endsWith('/parents')) {
+      return response([{ key: 1, canonicalName: 'Animalia', rank: 'KINGDOM' }])
+    }
+    if (url.pathname.endsWith('/vernacularNames')) return response({ results: [] })
+    if (url.pathname.endsWith('/taxa')) return response({ results: [] })
+    if (url.pathname.endsWith('/species/9415')) return response({})
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const detail = await loadSpeciesDetail(9415, {
+    fetchImpl,
+    taxonHint: {
+      key: 9415,
+      canonicalName: 'Rhinocerotidae',
+      scientificName: 'Rhinocerotidae',
+      rank: 'FAMILY',
+    },
+  })
+
+  assert.equal(detail.canonicalName, 'Rhinocerotidae')
+  assert.equal(detail.rank, 'FAMILY')
+  assert.equal(detail.classification.at(-1).key, 9415)
 })

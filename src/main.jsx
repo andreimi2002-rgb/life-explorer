@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { SOURCES } from './sources.js'
-import { searchSpecies } from './species.js'
+import { loadTaxonChildren, searchSpecies } from './species.js'
 import { loadSpeciesDetail } from './speciesDetail.js'
 import './styles.css'
 
@@ -37,9 +37,21 @@ function formatRank(rank = '') {
   return rank.toLocaleLowerCase().replaceAll('_', ' ')
 }
 
-function SearchResults({ results, onSelect }) {
+function toTaxonHint(taxon) {
+  const key = Number(taxon.key)
+  const canonicalName = taxon.canonicalName || taxon.scientificName || taxon.name || ''
+  return {
+    key,
+    canonicalName,
+    scientificName: taxon.scientificName || canonicalName,
+    rank: taxon.rank || '',
+    taxonomicStatus: taxon.taxonomicStatus || taxon.status || '',
+  }
+}
+
+function SearchResults({ results, onSelect, onLoadMore, loadingMore }) {
   const total = results.scientific.length + results.common.length
-  if (!total) return null
+  if (!total && !results.commonHasMore) return null
 
   return (
     <section className="search-results" aria-label="Search results">
@@ -48,29 +60,49 @@ function SearchResults({ results, onSelect }) {
           <span className="eyebrow">The field guide</span>
           <h2>Search results</h2>
         </div>
-        <span className="result-count">{total} matches</span>
+        <span className="result-count">
+          {total} shown{results.commonCount > results.common.length
+            ? ` · ${results.commonCount.toLocaleString()} common-name records`
+            : ' matches'}
+        </span>
       </div>
 
-      {results.common.length > 0 && (
+      {(results.common.length > 0 || results.commonHasMore) && (
         <section className="result-group" aria-labelledby="common-results-heading">
           <div className="group-heading">
             <h3 id="common-results-heading">Common names</h3>
             <span>Matched by familiar name</span>
           </div>
-          <ul className="results">
-            {results.common.map((species) => (
-              <li key={`common-${species.key}`}>
-                <button type="button" className="result-card" onClick={() => onSelect(species)}>
-                  <span className="result-card-top">
-                    <span className="rank-pill">{formatRank(species.rank)}</span>
-                    <span className="result-arrow" aria-hidden="true">↗</span>
-                  </span>
-                  <span className="species-name">{species.vernacularNames.join(', ')}</span>
-                  <span className="result-scientific"><i>{species.scientificName}</i></span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          {results.common.length > 0 ? (
+            <ul className="results">
+              {results.common.map((species) => (
+                <li key={`common-${species.key}`}>
+                  <button type="button" className="result-card" onClick={() => onSelect(species)}>
+                    <span className="result-card-top">
+                      <span className="rank-pill">{formatRank(species.rank)}</span>
+                      <span className="result-arrow" aria-hidden="true">↗</span>
+                    </span>
+                    <span className="species-name">{species.vernacularNames.join(', ')}</span>
+                    <span className="result-scientific"><i>{species.scientificName}</i></span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="children-message">No matches on this page. More common-name results are available.</p>
+          )}
+          {results.commonHasMore && (
+            <div className="pagination-row">
+              <button
+                className="button-secondary"
+                type="button"
+                disabled={loadingMore}
+                onClick={onLoadMore}
+              >
+                {loadingMore ? 'Loading more names…' : 'Load more common-name results'}
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -100,6 +132,99 @@ function SearchResults({ results, onSelect }) {
   )
 }
 
+function TaxonChildren({ taxonKey, onSelect }) {
+  const pageSize = 24
+  const [offset, setOffset] = useState(0)
+  const [page, setPage] = useState(null)
+  const [status, setStatus] = useState('loading')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setStatus('loading')
+    setError('')
+    loadTaxonChildren(taxonKey, { offset, limit: pageSize, signal: controller.signal })
+      .then((nextPage) => {
+        if (!controller.signal.aborted) {
+          setPage(nextPage)
+          setStatus('success')
+        }
+      })
+      .catch((loadError) => {
+        if (!controller.signal.aborted) {
+          setError(loadError.message)
+          setStatus('error')
+        }
+      })
+
+    return () => controller.abort()
+  }, [taxonKey, offset])
+
+  return (
+    <section className="detail-card descendants-card" aria-labelledby="descendants-heading">
+      <div className="card-heading">
+        <span className="card-icon" aria-hidden="true">⌄</span>
+        <div>
+          <span className="eyebrow">Continue exploring</span>
+          <h2 id="descendants-heading">Child taxa</h2>
+        </div>
+      </div>
+
+      {status === 'loading' && (
+        <p className="children-message" role="status">
+          <span className="loading-orb" /> Loading this taxonomic group…
+        </p>
+      )}
+      {status === 'error' && <p className="children-error" role="alert">{error}</p>}
+      {status === 'success' && page?.results.length === 0 && (
+        <p className="children-message">No child taxa are listed for this record.</p>
+      )}
+      {status === 'success' && page?.results.length > 0 && (
+        <>
+          <ul className="child-taxa-list">
+            {page.results.map((taxon) => (
+              <li key={taxon.key}>
+                <button
+                  className="child-taxon-card"
+                  type="button"
+                  onClick={() => onSelect(taxon)}
+                >
+                  <span className="rank-pill">{formatRank(taxon.rank)}</span>
+                  <span className="child-taxon-name">
+                    {taxon.rank === 'SPECIES' || taxon.rank === 'SUBSPECIES'
+                      ? <i>{taxon.canonicalName}</i>
+                      : taxon.canonicalName}
+                  </span>
+                  <span className="result-arrow" aria-hidden="true">↗</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="pagination-row child-pagination">
+            <button
+              className="button-secondary"
+              type="button"
+              disabled={offset === 0}
+              onClick={() => setOffset(Math.max(0, offset - pageSize))}
+            >
+              ← Previous
+            </button>
+            <span>Page {Math.floor(offset / pageSize) + 1}</span>
+            <button
+              className="button-secondary"
+              type="button"
+              disabled={page.endOfRecords}
+              onClick={() => setOffset(offset + pageSize)}
+            >
+              Next →
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
 function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
   const accepted = detail.taxonomicStatus?.toLocaleUpperCase() === 'ACCEPTED'
   const displayName = detail.preferredCommonName || detail.vernacularNames[0] || detail.canonicalName
@@ -115,7 +240,7 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
 
       <section className="species-hero">
         <div className="species-hero-copy">
-          <span className="eyebrow">Species field note</span>
+          <span className="eyebrow">Taxon field note</span>
           <div className="hero-pills">
             <span className="rank-pill">{formatRank(detail.rank)}</span>
             <span className={`status-pill ${accepted ? 'is-accepted' : 'is-other'}`}>
@@ -130,8 +255,8 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
           <p className="detail-scientific"><i>{detail.canonicalName}</i></p>
           {detail.authorship && <p className="detail-authorship">{detail.authorship}</p>}
           <p className="detail-intro">
-            Explore this organism’s place in the tree of life, from its broad group to its
-            scientific classification.
+            Explore this taxon’s place in the tree of life, then follow its children to more
+            specific groups and species.
           </p>
         </div>
 
@@ -181,7 +306,7 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
                 {taxon.key === detail.key ? (
                   <span className="taxonomy-name"><i>{taxon.name}</i></span>
                 ) : (
-                  <button type="button" className="taxonomy-link" onClick={() => onNavigateTaxon(taxon.key)}>
+                  <button type="button" className="taxonomy-link" onClick={() => onNavigateTaxon(taxon)}>
                     <i>{taxon.name}</i><span aria-hidden="true">↗</span>
                   </button>
                 )}
@@ -231,6 +356,7 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
           </a>
         </section>
       </div>
+      <TaxonChildren taxonKey={detail.key} onSelect={onNavigateTaxon} />
       <p className="detail-attribution">
         Classification and names: <a href="https://www.gbif.org" target="_blank" rel="noreferrer">GBIF</a>.
         {' '}Photographs are shown only when a Creative Commons licence is available.
@@ -242,14 +368,32 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
 function App() {
   const initialUrl = new URL(window.location.href)
   const [query, setQuery] = useState(initialUrl.searchParams.get('q') || '')
-  const [results, setResults] = useState({ scientific: [], common: [] })
+  const [results, setResults] = useState({
+    scientific: [],
+    common: [],
+    commonCount: 0,
+    commonOffset: 0,
+    commonHasMore: false,
+  })
   const [searchStatus, setSearchStatus] = useState('idle')
   const [searchError, setSearchError] = useState('')
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [paginationError, setPaginationError] = useState('')
   const [selectedKey, setSelectedKey] = useState(initialUrl.searchParams.get('species') || '')
+  const [taxonHint, setTaxonHint] = useState(() => {
+    const key = initialUrl.searchParams.get('species')
+    const name = initialUrl.searchParams.get('taxon')
+    const rank = initialUrl.searchParams.get('rank')
+    return key && name && rank
+      ? { key: Number(key), canonicalName: name, scientificName: name, rank }
+      : null
+  })
   const [detail, setDetail] = useState(null)
   const [detailStatus, setDetailStatus] = useState('idle')
   const [detailError, setDetailError] = useState('')
   const term = query.trim()
+  const currentTerm = useRef(term)
+  currentTerm.current = term
 
   useEffect(() => {
     document.title = detail
@@ -262,6 +406,12 @@ function App() {
       const url = new URL(window.location.href)
       setSelectedKey(url.searchParams.get('species') || '')
       setQuery(url.searchParams.get('q') || '')
+      const key = url.searchParams.get('species')
+      const name = url.searchParams.get('taxon')
+      const rank = url.searchParams.get('rank')
+      setTaxonHint(key && name && rank
+        ? { key: Number(key), canonicalName: name, scientificName: name, rank }
+        : null)
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
@@ -269,23 +419,43 @@ function App() {
 
   useEffect(() => {
     if (term.length < 2) {
-      setResults({ scientific: [], common: [] })
+      setResults({
+        scientific: [],
+        common: [],
+        commonCount: 0,
+        commonOffset: 0,
+        commonHasMore: false,
+      })
       setSearchStatus('idle')
       setSearchError('')
+      setPaginationError('')
       return undefined
     }
 
     const controller = new AbortController()
-    setResults({ scientific: [], common: [] })
+    setResults({
+      scientific: [],
+      common: [],
+      commonCount: 0,
+      commonOffset: 0,
+      commonHasMore: false,
+    })
     setSearchStatus('loading')
     setSearchError('')
+    setPaginationError('')
     const timeout = window.setTimeout(async () => {
       try {
         setResults(await searchSpecies(term, { signal: controller.signal }))
         setSearchStatus('success')
       } catch (error) {
         if (!controller.signal.aborted) {
-          setResults({ scientific: [], common: [] })
+          setResults({
+            scientific: [],
+            common: [],
+            commonCount: 0,
+            commonOffset: 0,
+            commonHasMore: false,
+          })
           setSearchError(error.message)
           setSearchStatus('error')
         }
@@ -309,7 +479,7 @@ function App() {
     setDetail(null)
     setDetailStatus('loading')
     setDetailError('')
-    loadSpeciesDetail(selectedKey, { signal: controller.signal })
+    loadSpeciesDetail(selectedKey, { signal: controller.signal, taxonHint })
       .then((species) => {
         setDetail(species)
         setDetailStatus('success')
@@ -322,37 +492,64 @@ function App() {
       })
 
     return () => controller.abort()
-  }, [selectedKey])
+  }, [selectedKey, taxonHint])
 
-  const selectSpecies = (species) => {
+  const navigateTaxon = (taxon) => {
+    const hint = toTaxonHint(taxon)
     const url = new URL(window.location.href)
-    url.searchParams.set('species', species.key)
+    url.searchParams.set('species', String(hint.key))
+    url.searchParams.set('taxon', hint.canonicalName)
+    url.searchParams.set('rank', hint.rank)
     if (term) url.searchParams.set('q', term)
-    window.history.pushState({ speciesKey: species.key }, '', url)
-    setSelectedKey(String(species.key))
+    window.history.pushState({ speciesKey: hint.key }, '', url)
+    setTaxonHint(hint)
+    setSelectedKey(String(hint.key))
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const navigateTaxon = (key) => {
-    const url = new URL(window.location.href)
-    url.searchParams.set('species', key)
-    window.history.pushState({ speciesKey: key }, '', url)
-    setSelectedKey(String(key))
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+  const loadMoreCommonNames = async () => {
+    setLoadingMore(true)
+    setPaginationError('')
+    const requestedTerm = term
+    try {
+      const nextPage = await searchSpecies(requestedTerm, {
+        commonOffset: results.commonOffset + 12,
+      })
+      if (currentTerm.current !== requestedTerm) return
+      const seenKeys = new Set(results.common.map((taxon) => taxon.key))
+      setResults((current) => ({
+        ...current,
+        common: [
+          ...current.common,
+          ...nextPage.common.filter((taxon) => !seenKeys.has(taxon.key)),
+        ],
+        commonCount: nextPage.commonCount,
+        commonOffset: nextPage.commonOffset,
+        commonHasMore: nextPage.commonHasMore,
+      }))
+    } catch (error) {
+      if (currentTerm.current === requestedTerm) setPaginationError(error.message)
+    } finally {
+      setLoadingMore(false)
+    }
   }
 
   const returnToSearch = () => {
     const url = new URL(window.location.href)
     url.searchParams.delete('species')
+    url.searchParams.delete('taxon')
+    url.searchParams.delete('rank')
     if (term) url.searchParams.set('q', term)
     window.history.pushState({}, '', url)
     setSelectedKey('')
+    setTaxonHint(null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const goHome = () => {
     window.history.pushState({}, '', window.location.pathname)
     setSelectedKey('')
+    setTaxonHint(null)
     setQuery('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -362,9 +559,13 @@ function App() {
     if (selectedKey) {
       const url = new URL(window.location.href)
       url.searchParams.delete('species')
-      url.searchParams.set('q', value)
+      url.searchParams.delete('taxon')
+      url.searchParams.delete('rank')
+      if (value) url.searchParams.set('q', value)
+      else url.searchParams.delete('q')
       window.history.replaceState({}, '', url)
       setSelectedKey('')
+      setTaxonHint(null)
     }
   }
 
@@ -376,7 +577,9 @@ function App() {
         ? `Search failed: ${searchError}`
         : searchStatus === 'success' &&
             results.scientific.length + results.common.length === 0
-          ? 'No matching names found. Try another spelling or common name.'
+        ? results.commonHasMore
+          ? 'No names on this page yet; more common-name results are available below.'
+          : 'No matching names found. Try another spelling or common name.'
           : searchStatus === 'success'
             ? `${results.scientific.length + results.common.length} matches found.`
             : ''
@@ -499,14 +702,24 @@ function App() {
             {searchStatus === 'error' && (
               <div className="inline-error" role="alert">{searchError}</div>
             )}
-            {searchStatus === 'success' && results.scientific.length + results.common.length === 0 && (
+            {paginationError && (
+              <div className="inline-error" role="alert">{paginationError}</div>
+            )}
+            {searchStatus === 'success' &&
+              results.scientific.length + results.common.length === 0 &&
+              !results.commonHasMore && (
               <section className="empty-state">
                 <span aria-hidden="true">⌕</span>
                 <h2>No species found this time.</h2>
                 <p>Try a common name, a scientific name, or one of the examples above.</p>
               </section>
             )}
-            <SearchResults results={results} onSelect={selectSpecies} />
+            <SearchResults
+              results={results}
+              onSelect={navigateTaxon}
+              onLoadMore={loadMoreCommonNames}
+              loadingMore={loadingMore}
+            />
 
             {!term && (
               <section className="intro-section" id="how-it-works">

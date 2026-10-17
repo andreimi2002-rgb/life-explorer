@@ -1,4 +1,5 @@
-const GBIF_API = 'https://api.gbif.org/v1'
+import { requestGbif } from './gbif.js'
+
 const INATURALIST_API = 'https://api.inaturalist.org/v1'
 const PHOTO_LICENSES = new Set([
   'cc0',
@@ -12,7 +13,7 @@ const PHOTO_LICENSES = new Set([
 
 async function readResponse(response) {
   if (!response.ok) {
-    throw new Error(`Species data request failed (${response.status})`)
+    throw new Error(`iNaturalist request failed (${response.status})`)
   }
 
   return response.json()
@@ -66,25 +67,33 @@ async function loadLicensedPhoto(species, { signal, fetchImpl }) {
   }
 }
 
-export async function loadSpeciesDetail(key, { signal, fetchImpl = fetch } = {}) {
+export async function loadSpeciesDetail(key, {
+  signal,
+  fetchImpl = fetch,
+  taxonHint,
+} = {}) {
   if (!Number.isInteger(Number(key)) || Number(key) < 1) {
     throw new Error('Invalid species key')
   }
 
-  const baseUrl = `${GBIF_API}/species/${Number(key)}`
-  const [speciesResponse, parentsResponse, namesResponse] = await Promise.all([
-    fetchImpl(new URL(baseUrl), { signal }),
-    fetchImpl(new URL(`${baseUrl}/parents`), { signal }),
-    fetchImpl(new URL(`${baseUrl}/vernacularNames?limit=100`), { signal }),
+  const [speciesData, parents, names] = await Promise.all([
+    requestGbif(`/species/${Number(key)}`, {}, { signal, fetchImpl }),
+    requestGbif(`/species/${Number(key)}/parents`, {}, { signal, fetchImpl }),
+    requestGbif(`/species/${Number(key)}/vernacularNames`, { limit: 100 }, { signal, fetchImpl }),
   ])
-  const [species, parents, names] = await Promise.all([
-    readResponse(speciesResponse),
-    readResponse(parentsResponse),
-    readResponse(namesResponse),
-  ])
+  const species = speciesData.canonicalName
+    ? speciesData
+    : taxonHint && Number(taxonHint.key) === Number(key)
+      ? {
+          ...taxonHint,
+          canonicalName: taxonHint.canonicalName || taxonHint.scientificName,
+          scientificName: taxonHint.scientificName || taxonHint.canonicalName,
+          taxonomicStatus: taxonHint.taxonomicStatus || taxonHint.status,
+        }
+      : speciesData
 
   if (!species.canonicalName || !species.scientificName || !species.rank) {
-    throw new Error('GBIF returned incomplete species data')
+    throw new Error('GBIF returned incomplete taxon data')
   }
   if (!Array.isArray(parents) || !Array.isArray(names.results)) {
     throw new Error('GBIF returned an unexpected classification response')

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { searchSpecies } from './species.js'
+import { loadTaxonChildren, searchSpecies } from './species.js'
 
 function response(body, status = 200) {
   return {
@@ -19,7 +19,13 @@ test('searchSpecies skips network requests for terms shorter than two characters
     },
   })
 
-  assert.deepEqual(results, { scientific: [], common: [] })
+  assert.deepEqual(results, {
+    scientific: [],
+    common: [],
+    commonCount: 0,
+    commonOffset: 0,
+    commonHasMore: false,
+  })
   assert.equal(requestCount, 0)
 })
 
@@ -44,6 +50,8 @@ test('searchSpecies returns scientific suggestions and matching English common n
           { key: 3, scientificName: 'Unrelated species', rank: 'SPECIES' },
           { scientificName: 'Missing key' },
         ],
+        count: 3,
+        endOfRecords: true,
       })
     }
 
@@ -78,6 +86,8 @@ test('searchSpecies returns scientific suggestions and matching English common n
       vernacularNames: ['Gray Wolf'],
     },
   ])
+  assert.equal(results.commonCount, 3)
+  assert.equal(results.commonHasMore, false)
 })
 
 test('searchSpecies expands common names GBIF does not find reliably as single words', async () => {
@@ -97,6 +107,8 @@ test('searchSpecies expands common names GBIF does not find reliably as single w
               { key: 5, scientificName: 'Gray wolf moth', rank: 'SPECIES' },
             ]
           : [{ key: 4, scientificName: 'Wolf spider', rank: 'SPECIES' }],
+        count: 1,
+        endOfRecords: true,
       })
     }
     if (url.pathname.endsWith('/species/5219173/vernacularNames')) {
@@ -138,6 +150,8 @@ test('searchSpecies ranks exact common-name matches and limits results', async (
           key: index + 100,
           scientificName: `Species ${index + 100}`,
         })),
+        count: 13,
+        endOfRecords: false,
       })
     }
     const key = Number(url.pathname.split('/').at(-2))
@@ -153,11 +167,115 @@ test('searchSpecies ranks exact common-name matches and limits results', async (
 
   assert.equal(results.common.length, 12)
   assert.equal(results.common[0].key, 111)
+  assert.equal(results.commonCount, 13)
+  assert.equal(results.commonHasMore, true)
+})
+
+test('searchSpecies paginates common names using the requested offset', async () => {
+  const searchOffsets = []
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.pathname.endsWith('/species/suggest')) return response([])
+    if (url.pathname.endsWith('/species/search')) {
+      searchOffsets.push(url.searchParams.get('offset'))
+      return response({
+        results: [{ key: 61, scientificName: 'Panthera leo', rank: 'SPECIES' }],
+        count: 30,
+        endOfRecords: false,
+      })
+    }
+    if (url.pathname.endsWith('/species/61/vernacularNames')) {
+      return response({ results: [{ language: 'eng', vernacularName: 'Lion' }] })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const results = await searchSpecies('lion', { fetchImpl, commonOffset: 12 })
+
+  assert.deepEqual(searchOffsets, ['12'])
+  assert.equal(results.commonOffset, 12)
+  assert.equal(results.commonHasMore, true)
+})
+
+test('searchSpecies expands the rhino common-name search to rhinoceros', async () => {
+  const searchTerms = []
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.pathname.endsWith('/species/suggest')) return response([])
+    if (url.pathname.endsWith('/species/search')) {
+      const term = url.searchParams.get('q')
+      searchTerms.push(term)
+      return response({
+        results: term === 'rhinoceros'
+          ? [{ key: 9415, scientificName: 'Rhinocerotidae', rank: 'FAMILY' }]
+          : [],
+        count: 1,
+        endOfRecords: true,
+      })
+    }
+    if (url.pathname.endsWith('/species/9415/vernacularNames')) {
+      return response({ results: [{ language: 'eng', vernacularName: 'Rhinoceros' }] })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const results = await searchSpecies('rhino', { fetchImpl })
+
+  assert.deepEqual(searchTerms, ['rhino', 'rhinoceros'])
+  assert.equal(results.common[0].key, 9415)
 })
 
 test('searchSpecies reports an unsuccessful GBIF response', async () => {
   await assert.rejects(
     searchSpecies('oak', { fetchImpl: async () => response({}, 503) }),
     /GBIF request failed \(503\)/,
+  )
+})
+
+test('loadTaxonChildren returns navigable taxon records and page metadata', async () => {
+  const requestedUrl = []
+  const fetchImpl = async (request) => {
+    requestedUrl.push(new URL(request))
+    return response({
+      results: [
+        {
+          key: 9416,
+          canonicalName: 'Rhinoceros',
+          scientificName: 'Rhinoceros Linnaeus, 1758',
+          rank: 'GENUS',
+          taxonomicStatus: 'ACCEPTED',
+        },
+        { key: 0, canonicalName: 'Invalid key', rank: 'GENUS' },
+        { key: 9417, name: 'Missing rank' },
+      ],
+      offset: 24,
+      limit: 24,
+      endOfRecords: false,
+    })
+  }
+
+  const page = await loadTaxonChildren(9415, { fetchImpl, offset: 24, limit: 24 })
+
+  assert.deepEqual(page.results, [{
+    key: 9416,
+    canonicalName: 'Rhinoceros',
+    scientificName: 'Rhinoceros Linnaeus, 1758',
+    rank: 'GENUS',
+    taxonomicStatus: 'ACCEPTED',
+  }])
+  assert.equal(page.offset, 24)
+  assert.equal(page.endOfRecords, false)
+  assert.equal(requestedUrl[0].pathname, '/v1/species/9415/children')
+  assert.equal(requestedUrl[0].searchParams.get('offset'), '24')
+})
+
+test('loadTaxonChildren rejects invalid keys and malformed responses', async () => {
+  await assert.rejects(
+    loadTaxonChildren('not-a-key', { fetchImpl: async () => response({ results: [] }) }),
+    /Invalid taxon key/,
+  )
+  await assert.rejects(
+    loadTaxonChildren(9415, { fetchImpl: async () => response({}) }),
+    /unexpected child-taxa response/,
   )
 })
