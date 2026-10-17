@@ -23,9 +23,10 @@ than being built separately for individual species.
   Creative Commons licence can be verified; otherwise a clear no-photo fallback.
 - Responsive search and profile pages.
 
-**M4 is in progress:** connecting exact GBIF taxa to English Wikipedia articles
-through Wikidata, then measuring which taxa still lack descriptions before
-choosing additional sources.
+**M3 is complete.** M4 is next, starting with **M4a Photos**: improve photo
+selection and use Commons when its author and licence can be verified. The
+exact-match Wikipedia lead description (the baseline for M4b) is already
+available; measuring its coverage and extending descriptions comes later.
 
 ## Data and coverage
 
@@ -46,8 +47,15 @@ taxon and source; uncertain supplemental facts are omitted.
   matching Wikipedia articles.
 - [Wikipedia](https://www.wikipedia.org) — English descriptions, shown with
   article attribution and licence information.
-- [Catalogue of Life](https://www.catalogueoflife.org) — an additional
-  taxonomic reference for future data reconciliation.
+
+Planned, not yet integrated:
+
+- [Wikimedia Commons](https://commons.wikimedia.org) — possible source for
+  lead images with verifiable author and licence, planned for M4a.
+- [Catalogue of Life](https://www.catalogueoflife.org) — possible future
+  taxonomic reference for data reconciliation.
+- Paleobiology Database and Wikispecies — candidates to assess after measuring
+  information coverage; not currently connected.
 
 No API keys are required for the current integrations.
 
@@ -62,5 +70,6 @@ npm run build
 
 Milestones, acceptance criteria, and source-data rules are in
 [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md). Work is developed on one branch
-per milestone, tested, and deployed to a Netlify Deploy Preview before merge.
-Production merges require explicit approval.
+per milestone and checked with a Netlify Deploy Preview. Never merge or push to
+`main`: production deployments cost Netlify credits, and the owner's budget is
+limited. Deploy Previews are free.

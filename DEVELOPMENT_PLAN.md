@@ -19,8 +19,11 @@ guessed.
 | M0 Foundation | Repository, Netlify, React shell, source attribution, base tests | Site deploys and build is green |
 | M1 Search | GBIF scientific and English common-name search, useful result ordering, loading and error states | Search returns relevant results and empty/error states are clear |
 | M2 Taxon profile | Names, taxonomic status, classification, licensed iNaturalist photo and source links | Search results open a shareable profile with a no-photo fallback |
-| M3 General search and taxonomy explorer | Shared GBIF client with short-lived in-memory cache, broader search, synonyms/common names, taxon pages, paginated child taxa, navigate to parent/child and browser history | Any available group can be explored through its paginated hierarchy; benchmark groups include Rhinocerotidae, Canidae, Felidae, Fagaceae, Ranidae and Pythonidae |
-| M4 Wikipedia descriptions | Show English Wikipedia descriptions when Wikidata links an exact GBIF taxon key and scientific name to an article; measure coverage and identify taxa still missing descriptions | Description, Wikipedia article, Wikidata match, and reuse licence are shown only for exact matches; unavailable and ambiguous cases are clearly identified |
+| M3 General search and taxonomy explorer (complete) | Shared GBIF client with short-lived in-memory cache, broader search, synonyms/common names, taxon pages, paginated child taxa, navigate to parent/child and browser history | Any available group can be explored through its paginated hierarchy; benchmark groups include Rhinocerotidae, Canidae, Felidae, Fagaceae, Ranidae and Pythonidae |
+| M4a Photos | Resolve a verified Wikipedia/Commons lead image first, then any licensed iNaturalist taxon photo, then the existing no-photo fallback | Benchmark taxa show photos only with author, licence and source link; higher-rank photos identify the member species shown |
+| M4b Descriptions (extend) | Existing exact-match Wikipedia lead description; measure coverage, then consider a second exact matching tier, article sections, Wikidata facts, labelled ancestor and data-based fallbacks | Every description or fact shows source, link and licence; uncertain matches are omitted and missing articles have a useful labelled fallback |
+| M4c Extinct vs living | Classify taxa as living, extinct or unknown; distinguish recent extinction from prehistoric/fossil taxa | Profiles and child lists show status accurately, with unknown never treated as living |
+| M4d Information grouping and coverage | Fetch information flags in batches and group children by available information; add kingdom-level coverage reporting | No request per child; grouping remains consistent within pages and low-information taxa stay reachable |
 | M5 Distribution map | GBIF occurrence-based map with caveats about observation coverage | Maps load for different taxa and clearly distinguish records from complete range |
 | M6 Learning features | Random taxon, identification quiz, compare taxa and common ancestry | At least two complete, playable modes work with general taxon data |
 | M7 Quality and delivery | Accessibility, responsive polish, PWA, caching/performance, end-to-end tests | Core flows pass automated checks and performance targets |
@@ -54,8 +57,10 @@ guessed.
 
 ## Workflow and data rules
 
-- One branch per milestone. Run tests and build before requesting a Deploy
-  Preview. Merge to `main` only with explicit approval.
+- One branch per milestone or sub-milestone. Run tests and build before
+  requesting a Deploy Preview. Never merge or push to `main`; Deploy Previews
+  are free and production deployments consume the owner's limited Netlify
+  credits.
 - Test varied ranks and kingdoms, plus ambiguous names such as "jaguar",
   "python", and "mouse"; these are reusable benchmark cases, not special-case
   implementations.
@@ -66,5 +71,112 @@ guessed.
 - Wikipedia descriptions are discovered through the exact GBIF identifier
   (Wikidata property P846) and must also have an exact scientific-name match
   (Wikidata property P225). Do not use fuzzy title/name search as a fallback.
-- Record which taxa have and do not have a confidently matched English
-  Wikipedia description before selecting additional sources for M4.
+
+## M4 scope and rules
+
+Current state: profiles show the English Wikipedia lead paragraph, found
+through Wikidata using the GBIF key (P846) and exact scientific name (P225),
+with Wikipedia, Wikidata and CC BY-SA attribution. The work below extends that
+baseline.
+
+### Photos (M4a)
+
+- Use one `resolvePhoto(taxon)` function that returns
+  `{url, author, licence, source}` or `null`; the rest of the app should not
+  depend on which source supplied the photo.
+- Priority: (1) Wikipedia/Commons lead image when the article is matched through
+  Wikidata, the file exists on Commons, and Commons metadata provides licence
+  and author; (2) the first iNaturalist taxon photo with an accepted licence
+  and attribution, not only the default photo; (3) the existing no-photo
+  fallback.
+- Reuse the image fields in the Wikipedia summary response when available.
+- Skip likely non-organism images (maps, ranges, diagrams, skulls, fossils,
+  illustrations and SVGs) when a better source exists.
+- For genera and higher groups, label a photo that shows one member species.
+- Always show author, licence and source link under the photo.
+- A small gallery mixing both sources is optional future work.
+- Benchmark cheetah (iNaturalist default photo rejected, Wikipedia suitable),
+  a taxon only on iNaturalist, a microorganism with no photo, and a taxon whose
+  lead image is a map.
+- Wikimedia Commons is a planned source for this milestone; it is not yet an
+  implemented integration.
+
+### Descriptions (M4b)
+
+- Do not guess. Show text only when the taxon match is confident; otherwise
+  omit it.
+- First measure how many taxa the current GBIF-key lookup misses, since not
+  every Wikidata taxon item carries a GBIF key.
+- If the GBIF-key lookup finds nothing, a second tier may use an exact
+  scientific name (P225) only when the result is unique and rank and ancestry
+  also match. Do not use fuzzy title search. The iNaturalist `wikipedia_url`
+  may also be considered for taxa already matched by exact name and rank.
+- Replace per-profile SPARQL requests with a lighter lookup that can later run
+  in batches for M4d.
+- Where available, show selected article sections (for example description,
+  distribution and habitat, behaviour, diet and ecology) as separate short
+  blocks with the same attribution.
+- Add a quick-facts card for available Wikidata properties (for example
+  conservation status, main food source and habitat), each with a source link;
+  omit absent fields.
+- A taxon without its own article may show a nearby ancestor's description,
+  labelled as such (for example, "About the genus X").
+- Data-based facts such as child-taxon counts, names in other languages,
+  countries and observation counts are allowed with source attribution.
+- Adapt the panel by rank: species emphasise habitat, behaviour and diet;
+  genera and higher groups emphasise how many species they include, with
+  examples linking to children.
+- Replace empty-panel messaging with a useful fallback. Keep raw error text in
+  a developer-friendly place rather than showing it as biological information.
+- AI-generated descriptions are not used unless clearly labelled and separately
+  approved. A Romanian Wikipedia toggle is a possible later enhancement.
+
+### Extinct vs living (M4c)
+
+- Use three states: living, extinct and unknown. Unknown must never default to
+  living.
+- Evaluate signals in order of trust: iNaturalist `extinct`; IUCN status from
+  Wikidata/Wikipedia (Extinct or Extinct in the wild); GBIF flags or geological
+  period where available; Paleobiology Database for fossil taxa; fossil
+  specimen records as a weak signal. Measure how often each signal exists.
+- Distinguish recently extinct (with date where known) from prehistoric/fossil.
+- Add a dagger badge, Living / Extinct / All filter, living taxa first and
+  extinct taxa grouped separately; mark extinct taxa in the classification
+  path.
+- Check whether GBIF child listings can be filtered server-side. If not, group
+  taxa within each page rather than across pages.
+- Paleobiology Database and other additional sources are candidates to assess,
+  not currently integrated.
+
+### Information grouping (M4d)
+
+- Fetch information flags in batches per page of children (Wikipedia accepts
+  up to 50 titles per request; iNaturalist `/taxa` accepts several IDs per
+  request), never one request per child.
+- Group taxa into with description, basic data only and little information.
+  Low-information taxa must remain reachable.
+- Sort and group within each page so ordering stays consistent between pages.
+
+### Coverage measurement
+
+- Build a script that samples a few hundred random taxa per kingdom or phylum
+  and reports how many have a description, photo and extinct flag, and how
+  many are missed only because of the GBIF-key lookup.
+- Use the results to decide whether sources such as Paleobiology Database or
+  Wikispecies are worth adding and how to handle taxa that remain without
+  information. These sources are candidates only, not implemented.
+
+### Cleanup
+
+- Replace the hard-coded `COMMON_NAME_ALIASES` (wolf, mouse, rhino) with
+  data-driven matching, in line with the no-special-cases rule.
+
+### Suggested order
+
+1. M4a Photos.
+2. Coverage script.
+3. M4b extensions (second matching tier, ancestor fallback, sections and quick
+   facts).
+4. M4c Extinct vs living.
+5. M4d Information grouping.
+6. Consider additional sources for information that remains unavailable.
