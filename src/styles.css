@@ -914,6 +914,107 @@ input:focus-visible {
   background: #fff;
 }
 
+.descendants-card {
+  margin-top: 16px;
+}
+
+.child-taxa-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.child-taxon-card {
+  display: flex;
+  width: 100%;
+  min-height: 67px;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid #e4e7df;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.child-taxon-card:hover {
+  border-color: #c4d2c1;
+  background: #f8faf6;
+}
+
+.child-taxon-card .rank-pill {
+  flex: 0 0 auto;
+}
+
+.child-taxon-name {
+  overflow: hidden;
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+}
+
+.child-taxon-card .result-arrow {
+  flex: 0 0 auto;
+}
+
+.children-message,
+.children-error {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: #77837a;
+  font-size: 12px;
+}
+
+.children-error {
+  color: #844a36;
+}
+
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  margin-top: 18px;
+}
+
+.child-pagination {
+  justify-content: space-between;
+  color: #77837a;
+  font-size: 11px;
+}
+
+.button-secondary {
+  padding: 10px 14px;
+  border: 1px solid #d9e0d7;
+  border-radius: 4px;
+  background: #fff;
+  color: var(--green-dark);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.button-secondary:hover:not(:disabled) {
+  border-color: #aebfa9;
+  background: #f1f4ee;
+}
+
+.button-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .card-heading {
   display: flex;
   align-items: center;
@@ -1162,6 +1263,10 @@ input:focus-visible {
     padding: 22px;
   }
 
+  .child-taxa-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .taxonomy-list li {
     grid-template-columns: 75px 1fr;
   }
@@ -1377,6 +1482,18 @@ input:focus-visible {
 
   .detail-card {
     padding: 21px 20px;
+  }
+
+  .child-taxa-list {
+    grid-template-columns: 1fr;
+  }
+
+  .child-pagination {
+    gap: 8px;
+  }
+
+  .child-pagination .button-secondary {
+    padding: 9px 10px;
   }
 
   .detail-attribution {
