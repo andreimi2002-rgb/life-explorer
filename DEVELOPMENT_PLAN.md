@@ -123,7 +123,12 @@ baseline.
   conservation status, main food source and habitat), each with a source link;
   omit absent fields.
 - A taxon without its own article may show a nearby ancestor's description,
-  labelled as such (for example, "About the genus X").
+  labelled as such (for example, "About the genus X"). Implemented: nearest
+  genus, family, order or class with an exact match; kingdom and phylum are
+  skipped.
+- Status: the second exact-name tier is implemented. On a 41-taxon live sample
+  it found nothing extra, because those taxa have no Wikidata article at all;
+  the tier is kept as a safe, tested fallback.
 - Data-based facts such as child-taxon counts, names in other languages,
   countries and observation counts are allowed with source attribution.
 - Adapt the panel by rank: species emphasise habitat, behaviour and diet;

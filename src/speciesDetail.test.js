@@ -263,3 +263,65 @@ test('loadSpeciesDetail includes a confidently matched Wikipedia description', a
   })
   assert.equal(detail.wikipediaError, '')
 })
+
+function createAncestorFetch({ ownArticle = false } = {}) {
+  const queries = []
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/parents')) {
+      return response([
+        { key: 1, canonicalName: 'Animalia', rank: 'KINGDOM' },
+        { key: 7, canonicalName: 'Canidae', rank: 'FAMILY' },
+        { key: 8, canonicalName: 'Canis', rank: 'GENUS' },
+      ])
+    }
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/vernacularNames')) {
+      return response({ results: [] })
+    }
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/species/42')) {
+      return response(baseSpecies())
+    }
+    if (url.hostname === 'api.inaturalist.org') return response({ results: [] })
+    if (url.hostname === 'query.wikidata.org') {
+      const query = url.searchParams.get('query')
+      queries.push(query)
+      const own = query.includes('"42"')
+      const genus = query.includes('"8"')
+      if (own && !ownArticle) return response({ results: { bindings: [] } })
+      const name = own ? 'Canis lupus' : genus ? 'Canis' : 'Canidae'
+      return response({
+        results: {
+          bindings: [{
+            item: { value: 'http://www.wikidata.org/entity/Q5' },
+            taxonName: { value: name },
+            article: { value: `https://en.wikipedia.org/wiki/${name.replace(' ', '_')}` },
+          }],
+        },
+      })
+    }
+    if (url.hostname === 'en.wikipedia.org') {
+      return response({ title: decodeURIComponent(url.pathname.split('/').pop()), extract: 'Text.' })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+  return { fetchImpl, queries }
+}
+
+test('loadSpeciesDetail falls back to the nearest labelled ancestor description', async () => {
+  const { fetchImpl, queries } = createAncestorFetch()
+  const detail = await loadSpeciesDetail(42, { fetchImpl })
+
+  assert.equal(detail.wikipedia, null)
+  assert.equal(detail.ancestorDescription.ancestorName, 'Canis')
+  assert.equal(detail.ancestorDescription.ancestorRank, 'GENUS')
+  assert.equal(detail.wikipediaError, '')
+  assert.ok(!queries.some((query) => query.includes('"1"')))
+})
+
+test('loadSpeciesDetail does not use an ancestor when the taxon has its own article', async () => {
+  const { fetchImpl } = createAncestorFetch({ ownArticle: true })
+  const detail = await loadSpeciesDetail(42, { fetchImpl })
+
+  assert.equal(detail.wikipedia.title, 'Canis_lupus')
+  assert.equal(detail.ancestorDescription, null)
+})

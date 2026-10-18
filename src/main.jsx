@@ -351,6 +351,32 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
               .
             </p>
           </>
+        ) : detail.ancestorDescription ? (
+          <>
+            <p className="wikipedia-empty">
+              No article was found for this taxon itself. The text below describes the{' '}
+              {formatRank(detail.ancestorDescription.ancestorRank)}{' '}
+              <em>{detail.ancestorDescription.ancestorName}</em>, which it belongs to.
+            </p>
+            <h3 className="ancestor-heading">
+              About the {formatRank(detail.ancestorDescription.ancestorRank)}{' '}
+              {detail.ancestorDescription.ancestorName}
+            </h3>
+            <p className="wikipedia-extract">{detail.ancestorDescription.extract}</p>
+            <p className="wikipedia-attribution">
+              From the Wikipedia article{' '}
+              <a href={detail.ancestorDescription.articleUrl} target="_blank" rel="noreferrer">
+                “{detail.ancestorDescription.title}”
+              </a>
+              {' '}· Matched through{' '}
+              <a href={detail.ancestorDescription.wikidataUrl} target="_blank" rel="noreferrer">Wikidata</a>
+              {' '}· Text available under{' '}
+              <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">
+                CC BY-SA
+              </a>
+              .
+            </p>
+          </>
         ) : (
           <p className={detail.wikipediaError ? 'wikipedia-unavailable' : 'wikipedia-empty'}>
             {detail.wikipediaError

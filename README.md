@@ -16,20 +16,24 @@ than being built separately for individual species.
 - Taxonomic child lists omit unranked and non-accepted backbone records.
 - Search URLs preserve the query so returning from a profile restores its
   result list.
-- English Wikipedia descriptions appear when Wikidata links the exact GBIF
-  taxon key and scientific name to an article; the article, Wikidata match, and
-  reuse licence are shown alongside the text.
+- English Wikipedia descriptions appear when Wikidata links the taxon to an
+  article by GBIF key and exact scientific name, or, when no item carries the
+  GBIF key, by a unique exact name with matching rank and classification. The
+  article, Wikidata match, and reuse licence are shown alongside the text.
+- A taxon without its own article may show the description of its nearest
+  genus, family, order or class that has one, clearly labelled as describing
+  that group.
 - Profile photos are selected from verified Wikipedia/Wikimedia Commons lead
   images first, then licensed iNaturalist taxon or observation photos; otherwise
   a clear no-photo fallback appears. Every displayed image shows its author,
   licence, source link and, where needed, the represented member taxon.
 - Responsive search and profile pages.
 
-**M3 is complete.** M4a photo selection is implemented on the `m4a-photos`
-branch: profiles prefer a verified Commons lead image, then an iNaturalist
-photo with a reusable licence and attribution. The exact-match Wikipedia lead
-description (the baseline for M4b) is already available; measuring its coverage
-and extending descriptions comes next.
+**M3 and M4a are complete.** M4b (descriptions) is in progress: the strict
+second name-matching tier and the labelled ancestor description are
+implemented; article sections and Wikidata quick facts are not yet. A coverage
+script (`npm run coverage`) measures how many sampled taxa have a description,
+photo and extinction signal.
 
 ## Data and coverage
 
