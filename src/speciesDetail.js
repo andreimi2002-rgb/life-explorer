@@ -1,5 +1,6 @@
 import { requestGbif } from './gbif.js'
 import { loadArticleSections } from './articleSections.js'
+import { loadExtinctionStatus } from './extinction.js'
 import { resolvePhoto } from './photos.js'
 import { loadQuickFacts } from './quickFacts.js'
 import { loadWikipediaDescription } from './wikipedia.js'
@@ -118,6 +119,15 @@ export async function loadSpeciesDetail(key, {
     else extras.errors.push(facts.reason.message)
     return extras
   })
+  const extinctionPromise = extrasPromise.then((extras) => loadExtinctionStatus({
+    key: species.key,
+    canonicalName: species.canonicalName,
+    rank: species.rank,
+  }, {
+    iucnStatuses: extras.facts.find((fact) => fact.id === 'status')?.values ?? [],
+    signal,
+    fetchImpl,
+  }))
   const speciesCountPromise = ['SPECIES', 'SUBSPECIES'].includes(species.rank)
     ? Promise.resolve({ count: null, error: '' })
     : requestGbif('/species/search', {
@@ -149,12 +159,13 @@ export async function loadSpeciesDetail(key, {
       if (signal?.aborted) throw error
       photoError = error.message
     })
-  const [wikipediaResult, , ancestorResult, extras, speciesCount] = await Promise.all([
+  const [wikipediaResult, , ancestorResult, extras, speciesCount, extinction] = await Promise.all([
     wikipediaPromise,
     photoPromise,
     ancestorPromise,
     extrasPromise,
     speciesCountPromise,
+    extinctionPromise,
   ])
   wikipedia = wikipediaResult.description
   wikipediaError = wikipediaResult.error || ancestorResult.error
@@ -179,6 +190,12 @@ export async function loadSpeciesDetail(key, {
     sections: extras.sections,
     quickFacts: extras.facts,
     speciesCount: speciesCount.count,
-    sourceErrors: [...extras.errors, speciesCount.error].filter(Boolean),
+    sourceErrors: [...extras.errors, speciesCount.error, ...extinction.errors].filter(Boolean),
+    extinction: {
+      state: extinction.state,
+      kind: extinction.kind,
+      conflict: extinction.conflict === true,
+      evidence: extinction.evidence,
+    },
   }
 }

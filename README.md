@@ -37,6 +37,12 @@ when available, with a species count for groups. A coverage
 script (`npm run coverage`) measures how many sampled taxa have a description,
 photo and extinction signal.
 
+M4c (extinct vs living) is implemented on its own branch: profiles show a
+Living / † Extinct / Status unknown badge with the sources behind it, and child
+lists have a Living / Extinct / All filter and a dagger mark. "Living" is shown
+only with positive evidence; no evidence or conflicting sources stay unknown.
+Extinct ancestors in the classification path are not marked yet.
+
 ## Data and coverage
 
 Data is requested from upstream sources when needed; the app does not download
@@ -48,11 +54,12 @@ taxon and source; uncertain supplemental facts are omitted.
 
 ## Data sources
 
-- [GBIF](https://www.gbif.org) — names and taxonomic classification.
-- [iNaturalist](https://www.inaturalist.org) — taxon names and licensed photos
-  with contributor attribution.
+- [GBIF](https://www.gbif.org) — names, taxonomic classification and the
+  extinct/not-extinct flag.
+- [iNaturalist](https://www.inaturalist.org) — taxon names, licensed photos
+  with contributor attribution, and an extinct flag.
 - [Wikidata](https://www.wikidata.org) — links GBIF taxon identifiers to
-  matching Wikipedia articles.
+  matching Wikipedia articles; IUCN status is used as an extinction signal.
 - [Wikipedia](https://www.wikipedia.org) — English descriptions, shown with
   article attribution and licence information.
 - [Wikimedia Commons](https://commons.wikimedia.org) — lead images with verified

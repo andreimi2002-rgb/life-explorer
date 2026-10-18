@@ -393,7 +393,14 @@ test('searchSpecies reports an unsuccessful GBIF response', async () => {
 test('loadTaxonChildren returns navigable taxon records and page metadata', async () => {
   const requestedUrl = []
   const fetchImpl = async (request) => {
-    requestedUrl.push(new URL(request))
+    const url = new URL(request)
+    if (url.pathname.endsWith('/species/search')) {
+      return response({
+        results: url.searchParams.get('isExtinct') === 'true' ? [] : [{ key: 9416 }],
+        endOfRecords: true,
+      })
+    }
+    requestedUrl.push(url)
     return response({
       results: [
         {
@@ -434,6 +441,7 @@ test('loadTaxonChildren returns navigable taxon records and page metadata', asyn
     scientificName: 'Rhinoceros Linnaeus, 1758',
     rank: 'GENUS',
     taxonomicStatus: 'ACCEPTED',
+    extinctState: 'living',
   }])
   assert.equal(page.offset, 24)
   assert.equal(page.endOfRecords, false)

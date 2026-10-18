@@ -145,18 +145,45 @@ function SearchResults({ results, onSelect, onLoadMore, loadingMore }) {
   )
 }
 
+function extinctionLabel(extinction) {
+  if (extinction.conflict) return 'Status unknown (sources disagree)'
+  if (extinction.state === 'extinct') {
+    return extinction.kind === 'wild' ? '† Extinct in the wild' : '† Extinct'
+  }
+  if (extinction.state === 'living') return 'Living'
+  return 'Status unknown'
+}
+
+function ExtinctionBadge({ extinction }) {
+  if (!extinction) return null
+  return (
+    <span
+      className={`extinction-pill is-${extinction.state}`}
+      title={extinction.evidence.map((item) => `${item.source}: ${item.detail}`).join('; ')}
+    >
+      {extinctionLabel(extinction)}
+    </span>
+  )
+}
+
 function TaxonChildren({ taxonKey, onSelect }) {
   const pageSize = 24
   const [offset, setOffset] = useState(0)
+  const [filter, setFilter] = useState('all')
   const [page, setPage] = useState(null)
   const [status, setStatus] = useState('loading')
   const [error, setError] = useState('')
 
   useEffect(() => {
+    setFilter('all')
+    setOffset(0)
+  }, [taxonKey])
+
+  useEffect(() => {
     const controller = new AbortController()
     setStatus('loading')
     setError('')
-    loadTaxonChildren(taxonKey, { offset, limit: pageSize, signal: controller.signal })
+    loadTaxonChildren(taxonKey, { offset, limit: pageSize, filter, signal: controller.signal })
       .then((nextPage) => {
         if (!controller.signal.aborted) {
           setPage(nextPage)
@@ -171,7 +198,12 @@ function TaxonChildren({ taxonKey, onSelect }) {
       })
 
     return () => controller.abort()
-  }, [taxonKey, offset])
+  }, [taxonKey, offset, filter])
+
+  const changeFilter = (nextFilter) => {
+    setFilter(nextFilter)
+    setOffset(0)
+  }
 
   return (
     <section className="detail-card descendants-card" aria-labelledby="descendants-heading">
@@ -186,6 +218,38 @@ function TaxonChildren({ taxonKey, onSelect }) {
         </div>
       </div>
 
+      <div className="child-filter" role="group" aria-label="Filter child taxa">
+        {[['all', 'All'], ['living', 'Living'], ['extinct', 'Extinct']].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={filter === value ? 'is-active' : ''}
+            aria-pressed={filter === value}
+            onClick={() => changeFilter(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {filter !== 'all' && status === 'success' && (
+        <p className="children-quality-note">
+          Showing {filter === 'extinct' ? 'extinct' : 'living'}{' '}
+          {page?.listedRank ? `${formatRank(page.listedRank).toLowerCase()}-level taxa` : 'taxa'}{' '}
+          marked by GBIF, including those nested deeper in the group. Taxa without a GBIF
+          extinction flag appear only under All, as unknown.
+        </p>
+      )}
+      {filter === 'all' && status === 'success' && page?.statusError && (
+        <p className="children-error" role="alert">
+          Extinct/living badges unavailable: {page.statusError}
+        </p>
+      )}
+      {filter === 'all' && status === 'success' && page && !page.statusError && !page.statusComplete && (
+        <p className="children-quality-note">
+          This group is too large to check every taxon, so some are shown without a status.
+        </p>
+      )}
+
       {status === 'loading' && (
         <p className="children-message" role="status">
           <span className="loading-orb" /> Loading this taxonomic group…
@@ -193,7 +257,11 @@ function TaxonChildren({ taxonKey, onSelect }) {
       )}
       {status === 'error' && <p className="children-error" role="alert">{error}</p>}
       {status === 'success' && page?.results.length === 0 && (
-        <p className="children-message">No child taxa are listed for this record.</p>
+        <p className="children-message">
+          {filter === 'all'
+            ? 'No child taxa are listed for this record.'
+            : 'No taxa with this status are flagged by GBIF in this group.'}
+        </p>
       )}
       {status === 'success' && page?.results.length > 0 && (
         <>
@@ -207,10 +275,14 @@ function TaxonChildren({ taxonKey, onSelect }) {
                 >
                   <span className="rank-pill">{formatRank(taxon.rank)}</span>
                   <span className="child-taxon-name">
+                    {taxon.extinctState === 'extinct' && (
+                      <span className="extinct-mark" title="Extinct" aria-label="Extinct">† </span>
+                    )}
                     {taxon.rank === 'SPECIES' || taxon.rank === 'SUBSPECIES'
                       ? <i>{taxon.canonicalName}</i>
                       : taxon.canonicalName}
                   </span>
+                  {taxon.extinctState === 'living' && <span className="state-tag is-living">Living</span>}
                   <span className="result-arrow" aria-hidden="true">↗</span>
                 </button>
               </li>
@@ -266,6 +338,7 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
                 ? 'accepted'
                 : `GBIF: ${formatRank(detail.taxonomicStatus || 'status unavailable')}`}
             </span>
+            <ExtinctionBadge extinction={detail.extinction} />
           </div>
           <h1>{displayName}</h1>
           {alternateNames.length > 0 && (
