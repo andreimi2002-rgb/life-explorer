@@ -259,6 +259,128 @@ test('loadSpeciesDetail includes a confidently matched Wikipedia description', a
     articleUrl: 'https://en.wikipedia.org/wiki/Wolf',
     wikidataUrl: 'http://www.wikidata.org/entity/Q999',
     image: null,
+    matchedBy: 'gbif-key',
   })
   assert.equal(detail.wikipediaError, '')
+})
+
+function createAncestorFetch({ ownArticle = false } = {}) {
+  const queries = []
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/parents')) {
+      return response([
+        { key: 1, canonicalName: 'Animalia', rank: 'KINGDOM' },
+        { key: 7, canonicalName: 'Canidae', rank: 'FAMILY' },
+        { key: 8, canonicalName: 'Canis', rank: 'GENUS' },
+      ])
+    }
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/vernacularNames')) {
+      return response({ results: [] })
+    }
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/species/42')) {
+      return response(baseSpecies())
+    }
+    if (url.hostname === 'api.inaturalist.org') return response({ results: [] })
+    if (url.hostname === 'query.wikidata.org') {
+      const query = url.searchParams.get('query')
+      queries.push(query)
+      const own = query.includes('"42"')
+      const genus = query.includes('"8"')
+      if (own && !ownArticle) return response({ results: { bindings: [] } })
+      const name = own ? 'Canis lupus' : genus ? 'Canis' : 'Canidae'
+      return response({
+        results: {
+          bindings: [{
+            item: { value: 'http://www.wikidata.org/entity/Q5' },
+            taxonName: { value: name },
+            article: { value: `https://en.wikipedia.org/wiki/${name.replace(' ', '_')}` },
+          }],
+        },
+      })
+    }
+    if (url.hostname === 'en.wikipedia.org') {
+      return response({ title: decodeURIComponent(url.pathname.split('/').pop()), extract: 'Text.' })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+  return { fetchImpl, queries }
+}
+
+test('loadSpeciesDetail falls back to the nearest labelled ancestor description', async () => {
+  const { fetchImpl, queries } = createAncestorFetch()
+  const detail = await loadSpeciesDetail(42, { fetchImpl })
+
+  assert.equal(detail.wikipedia, null)
+  assert.equal(detail.ancestorDescription.ancestorName, 'Canis')
+  assert.equal(detail.ancestorDescription.ancestorRank, 'GENUS')
+  assert.equal(detail.wikipediaError, '')
+  assert.ok(!queries.some((query) => query.includes('"1"')))
+})
+
+test('loadSpeciesDetail does not use an ancestor when the taxon has its own article', async () => {
+  const { fetchImpl } = createAncestorFetch({ ownArticle: true })
+  const detail = await loadSpeciesDetail(42, { fetchImpl })
+
+  assert.equal(detail.wikipedia.title, 'Canis_lupus')
+  assert.equal(detail.ancestorDescription, null)
+})
+
+test('loadSpeciesDetail adds sections, quick facts and a species count, keeping failures separate', async () => {
+  const genus = { ...baseSpecies(), canonicalName: 'Canis', scientificName: 'Canis Linnaeus, 1758', rank: 'GENUS' }
+  let factsFail = false
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/parents')) {
+      return response([{ key: 1, canonicalName: 'Animalia', rank: 'KINGDOM' }])
+    }
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/vernacularNames')) {
+      return response({ results: [] })
+    }
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/species/search')) {
+      assert.equal(url.searchParams.get('highertaxonKey'), '42')
+      assert.equal(url.searchParams.get('rank'), 'SPECIES')
+      return response({ count: 7 })
+    }
+    if (url.hostname === 'api.gbif.org') return response(genus)
+    if (url.hostname === 'api.inaturalist.org') return response({ results: [] })
+    if (url.hostname === 'query.wikidata.org') {
+      const query = url.searchParams.get('query')
+      if (query.includes('wdt:P141')) {
+        return factsFail
+          ? response({}, 503)
+          : response({ results: { bindings: [{ fact: { value: 'status' }, valueLabel: { value: 'Least concern' } }] } })
+      }
+      return response({
+        results: {
+          bindings: [{
+            item: { value: 'http://www.wikidata.org/entity/Q5' },
+            taxonName: { value: 'Canis' },
+            article: { value: 'https://en.wikipedia.org/wiki/Canis' },
+          }],
+        },
+      })
+    }
+    if (url.pathname === '/w/api.php') {
+      return response({
+        query: {
+          pages: [{
+            extract: `== Description ==\n${'Members are medium-sized canids. '.repeat(5)}`,
+          }],
+        },
+      })
+    }
+    return response({ title: 'Canis', extract: 'Canis is a genus.' })
+  }
+
+  const detail = await loadSpeciesDetail(42, { fetchImpl })
+  assert.equal(detail.speciesCount, 7)
+  assert.deepEqual(detail.sections.map((section) => section.id), ['description'])
+  assert.deepEqual(detail.quickFacts.map((fact) => fact.values), [['Least concern']])
+  assert.deepEqual(detail.sourceErrors, [])
+
+  factsFail = true
+  const failed = await loadSpeciesDetail(42, { fetchImpl: async (r) => fetchImpl(r) })
+  assert.equal(failed.wikipedia.title, 'Canis')
+  assert.match(failed.sourceErrors[0], /facts request failed \(503\)/)
 })

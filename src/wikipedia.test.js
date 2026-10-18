@@ -52,6 +52,7 @@ test('loadWikipediaDescription finds the article by exact GBIF key and scientifi
     articleUrl: 'https://en.wikipedia.org/wiki/Tiger',
     wikidataUrl: 'http://www.wikidata.org/entity/Q19939',
     image: { filename: 'Tiger.jpg' },
+    matchedBy: 'gbif-key',
   })
   assert.match(requestedUrls[0].searchParams.get('query'), /wdt:P846 "5219416"/)
   assert.equal(requestedUrls[1].pathname, '/api/rest_v1/page/summary/Tiger')
@@ -111,4 +112,70 @@ test('loadWikipediaDescription caches matched articles briefly', async () => {
 
   assert.deepEqual(second, first)
   assert.equal(calls, 2)
+})
+
+function nameBinding({
+  item = 'http://www.wikidata.org/entity/Q10',
+  rank = 'http://www.wikidata.org/entity/Q7432',
+  parentName = 'Euryodon',
+  gbifKey,
+} = {}) {
+  return {
+    item: { value: item },
+    article: { value: 'https://en.wikipedia.org/wiki/Example_fish' },
+    rank: { value: rank },
+    parentName: { value: parentName },
+    ...(gbifKey ? { gbifKey: { value: gbifKey } } : {}),
+  }
+}
+
+function nameTierFetch(nameBindings) {
+  return async (request) => {
+    const url = new URL(request)
+    if (url.hostname === 'query.wikidata.org') {
+      const query = url.searchParams.get('query')
+      return query.includes('P846 "')
+        ? response({ results: { bindings: [] } })
+        : response({ results: { bindings: nameBindings } })
+    }
+    return response({ title: 'Example fish', extract: 'A small fish.' })
+  }
+}
+
+const nameTaxon = { key: 77, canonicalName: 'Euryodon exemplum', rank: 'SPECIES' }
+const ancestors = ['Animalia', 'Euryodon']
+
+test('name tier accepts a unique match with the same rank and a shared ancestor', async () => {
+  const description = await loadWikipediaDescription(nameTaxon, {
+    fetchImpl: nameTierFetch([nameBinding()]),
+    ancestorNames: ancestors,
+  })
+  assert.equal(description.matchedBy, 'name')
+  assert.equal(description.title, 'Example fish')
+})
+
+test('name tier rejects wrong rank, unrelated ancestry, own GBIF key and ambiguity', async () => {
+  const cases = [
+    [nameBinding({ rank: 'http://www.wikidata.org/entity/Q34740' })],
+    [nameBinding({ parentName: 'Unrelated' })],
+    [nameBinding({ gbifKey: '999' })],
+    [nameBinding(), nameBinding({ item: 'http://www.wikidata.org/entity/Q11' })],
+  ]
+  for (const bindings of cases) {
+    const description = await loadWikipediaDescription(nameTaxon, {
+      fetchImpl: nameTierFetch(bindings),
+      ancestorNames: ancestors,
+    })
+    assert.equal(description, null)
+  }
+})
+
+test('name tier is skipped when no classification is provided', async () => {
+  let calls = 0
+  const fetchImpl = async () => {
+    calls += 1
+    return response({ results: { bindings: [] } })
+  }
+  assert.equal(await loadWikipediaDescription(nameTaxon, { fetchImpl }), null)
+  assert.equal(calls, 1)
 })

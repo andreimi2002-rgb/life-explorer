@@ -20,6 +20,7 @@ sub-milestone the owner names.
 - `npm install` — install dependencies when needed.
 - `npm run dev` — start the local development server.
 - `npm test` — run tests with Node's built-in test runner (`node --test`).
+- `npm run coverage` — sample taxa and write a local coverage report (not part of the site).
 - `npm run build` — create the production build; Netlify publishes `dist`.
 
 ## Code map

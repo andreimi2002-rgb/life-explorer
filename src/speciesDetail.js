@@ -1,6 +1,40 @@
 import { requestGbif } from './gbif.js'
+import { loadArticleSections } from './articleSections.js'
 import { resolvePhoto } from './photos.js'
+import { loadQuickFacts } from './quickFacts.js'
 import { loadWikipediaDescription } from './wikipedia.js'
+
+const GBIF_BACKBONE_KEY = 'd7dddbf4-2cf0-4f39-9b2a-bb099caae36c'
+
+const FALLBACK_ANCESTOR_RANKS = ['GENUS', 'FAMILY', 'ORDER', 'CLASS']
+
+// Nearest ancestor (genus up to class) with a confidently matched article.
+// Kingdom and phylum are skipped because their descriptions say too little
+// about a specific taxon.
+async function loadAncestorDescription(parents, { signal, fetchImpl }) {
+  const candidates = parents
+    .map((parent, index) => ({ parent, index }))
+    .filter(({ parent }) =>
+      FALLBACK_ANCESTOR_RANKS.includes(parent.rank) && parent.canonicalName,
+    )
+    .reverse()
+    .slice(0, 3)
+  for (const { parent, index } of candidates) {
+    const description = await loadWikipediaDescription({
+      key: parent.key,
+      canonicalName: parent.canonicalName,
+      rank: parent.rank,
+    }, {
+      signal,
+      fetchImpl,
+      ancestorNames: parents.slice(0, index).map((item) => item.canonicalName).filter(Boolean),
+    })
+    if (description) {
+      return { ...description, ancestorName: parent.canonicalName, ancestorRank: parent.rank }
+    }
+  }
+  return null
+}
 
 export async function loadSpeciesDetail(key, {
   signal,
@@ -46,12 +80,60 @@ export async function loadSpeciesDetail(key, {
   let preferredCommonName = ''
   let wikipedia = null
   let wikipediaError = ''
-  const wikipediaPromise = loadWikipediaDescription(species, { signal, fetchImpl })
+  const wikipediaPromise = loadWikipediaDescription(species, {
+    signal,
+    fetchImpl,
+    ancestorNames: parents
+      .map((parent) => parent.canonicalName)
+      .filter(Boolean),
+  })
     .then((description) => ({ description, error: '' }))
     .catch((error) => {
       if (signal?.aborted) throw error
       return { description: null, error: error.message }
     })
+  const ancestorPromise = wikipediaPromise.then(async ({ description, error }) => {
+    if (description || error) return { description: null, error: '' }
+    try {
+      return {
+        description: await loadAncestorDescription(parents, { signal, fetchImpl }),
+        error: '',
+      }
+    } catch (ancestorError) {
+      if (signal?.aborted) throw ancestorError
+      return { description: null, error: ancestorError.message }
+    }
+  })
+  const extrasPromise = wikipediaPromise.then(async ({ description }) => {
+    const extras = { sections: [], facts: [], errors: [] }
+    if (!description) return extras
+    const [sections, facts] = await Promise.allSettled([
+      loadArticleSections(description.articleUrl, species.rank, { signal, fetchImpl }),
+      loadQuickFacts(description.wikidataUrl, { signal, fetchImpl }),
+    ])
+    if (signal?.aborted) throw signal.reason
+    if (sections.status === 'fulfilled') extras.sections = sections.value
+    else extras.errors.push(sections.reason.message)
+    if (facts.status === 'fulfilled') extras.facts = facts.value
+    else extras.errors.push(facts.reason.message)
+    return extras
+  })
+  const speciesCountPromise = ['SPECIES', 'SUBSPECIES'].includes(species.rank)
+    ? Promise.resolve({ count: null, error: '' })
+    : requestGbif('/species/search', {
+        highertaxonKey: Number(key),
+        rank: 'SPECIES',
+        status: 'ACCEPTED',
+        datasetKey: GBIF_BACKBONE_KEY,
+        limit: 0,
+      }, { signal, fetchImpl })
+      .then((data) => Number.isInteger(data.count)
+        ? { count: data.count, error: '' }
+        : { count: null, error: 'GBIF returned an unexpected species count' })
+      .catch((error) => {
+        if (signal?.aborted) throw error
+        return { count: null, error: error.message }
+      })
   const photoPromise = wikipediaPromise
     .then(({ description }) => resolvePhoto(species, {
       wikipedia: description,
@@ -67,9 +149,15 @@ export async function loadSpeciesDetail(key, {
       if (signal?.aborted) throw error
       photoError = error.message
     })
-  const [wikipediaResult] = await Promise.all([wikipediaPromise, photoPromise])
+  const [wikipediaResult, , ancestorResult, extras, speciesCount] = await Promise.all([
+    wikipediaPromise,
+    photoPromise,
+    ancestorPromise,
+    extrasPromise,
+    speciesCountPromise,
+  ])
   wikipedia = wikipediaResult.description
-  wikipediaError = wikipediaResult.error
+  wikipediaError = wikipediaResult.error || ancestorResult.error
 
   return {
     ...species,
@@ -87,5 +175,10 @@ export async function loadSpeciesDetail(key, {
     photoError,
     wikipedia,
     wikipediaError,
+    ancestorDescription: ancestorResult.description,
+    sections: extras.sections,
+    quickFacts: extras.facts,
+    speciesCount: speciesCount.count,
+    sourceErrors: [...extras.errors, speciesCount.error].filter(Boolean),
   }
 }
