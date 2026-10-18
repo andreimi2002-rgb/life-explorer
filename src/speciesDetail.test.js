@@ -338,6 +338,9 @@ test('loadSpeciesDetail adds sections, quick facts and a species count, keeping 
       return response({ results: [] })
     }
     if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/species/search')) {
+      if (url.searchParams.get('q')) {
+        return response({ results: [{ key: 42, canonicalName: 'Canis', extinct: false }] })
+      }
       assert.equal(url.searchParams.get('highertaxonKey'), '42')
       assert.equal(url.searchParams.get('rank'), 'SPECIES')
       return response({ count: 7 })

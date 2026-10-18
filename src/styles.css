@@ -1090,6 +1090,58 @@ input:focus-visible {
   flex: 0 0 auto;
 }
 
+.child-filter {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.child-filter button {
+  padding: 5px 14px;
+  border: 1px solid #c4d2c1;
+  border-radius: 999px;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.child-filter button.is-active {
+  border-color: #3d6b45;
+  background: #3d6b45;
+  color: #fff;
+}
+
+.extinction-pill,
+.state-tag {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.extinction-pill.is-extinct {
+  background: #f3e1dc;
+  color: #8a3a26;
+}
+
+.extinction-pill.is-living,
+.state-tag.is-living {
+  background: #dfeedd;
+  color: #2f5d38;
+}
+
+.extinction-pill.is-unknown {
+  background: #ece9e1;
+  color: #5d5a50;
+}
+
+.extinct-mark {
+  color: #8a3a26;
+  font-weight: 700;
+}
+
 .children-message,
 .children-error {
   display: flex;

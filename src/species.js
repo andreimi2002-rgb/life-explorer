@@ -204,14 +204,111 @@ export async function searchSpecies(query, {
   }
 }
 
+const CHILD_FILTERS = new Set(['all', 'living', 'extinct'])
+const FLAG_PAGE_SIZE = 1000
+const MAX_FLAG_PAGES = 2
+const STATE_ORDER = { living: 0, unknown: 1, unchecked: 1, extinct: 2 }
+
+function toChild(taxon, extinctState) {
+  return {
+    key: taxon.key,
+    canonicalName: taxon.canonicalName || taxon.name || taxon.scientificName,
+    scientificName: taxon.scientificName || taxon.canonicalName || taxon.name,
+    rank: taxon.rank,
+    taxonomicStatus: taxon.taxonomicStatus || '',
+    extinctState,
+  }
+}
+
+function stateFromGbifFlag(extinct) {
+  if (extinct === true) return 'extinct'
+  if (extinct === false) return 'living'
+  return 'unknown'
+}
+
+function dominantRank(taxa) {
+  const counts = new Map()
+  for (const taxon of taxa) counts.set(taxon.rank, (counts.get(taxon.rank) || 0) + 1)
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || ''
+}
+
+function searchChildren(key, rank, params, { signal, fetchImpl }) {
+  return requestGbif('/species/search', {
+    datasetKey: GBIF_BACKBONE_KEY,
+    highertaxonKey: Number(key),
+    rank,
+    status: 'ACCEPTED',
+    ...params,
+  }, { signal, fetchImpl })
+}
+
+// GBIF children and detail records do not carry the extinction flag, but
+// search results do. Collect the flagged keys of the group's main child rank.
+async function loadFlagSets(key, rank, { signal, fetchImpl }) {
+  let complete = true
+  const collect = async (isExtinct) => {
+    const keys = new Set()
+    for (let page = 0; page < MAX_FLAG_PAGES; page += 1) {
+      const data = await searchChildren(key, rank, {
+        isExtinct,
+        limit: FLAG_PAGE_SIZE,
+        offset: page * FLAG_PAGE_SIZE,
+      }, { signal, fetchImpl })
+      if (!Array.isArray(data.results)) {
+        throw new Error('GBIF returned an unexpected extinction-flag response')
+      }
+      data.results.forEach((result) => keys.add(result.key))
+      if (data.endOfRecords !== false) return keys
+    }
+    complete = false
+    return keys
+  }
+  const [extinct, living] = await Promise.all([collect(true), collect(false)])
+  return { extinct, living, complete }
+}
+
 export async function loadTaxonChildren(key, {
   signal,
   fetchImpl = fetch,
   offset = 0,
   limit = RESULT_LIMIT,
+  filter = 'all',
 } = {}) {
   if (!Number.isInteger(Number(key)) || Number(key) < 1) {
     throw new Error('Invalid taxon key')
+  }
+  if (!CHILD_FILTERS.has(filter)) throw new Error('Invalid child filter')
+
+  if (filter !== 'all') {
+    const sample = await requestGbif(
+      `/species/${Number(key)}/children`,
+      { limit: 100 },
+      { signal, fetchImpl },
+    )
+    if (!Array.isArray(sample.results)) {
+      throw new Error('GBIF returned an unexpected child-taxa response')
+    }
+    const rank = dominantRank(sample.results.filter(isAcceptedNamedTaxon))
+    if (!rank) return { results: [], offset, limit, endOfRecords: true, filter }
+
+    const data = await searchChildren(key, rank, {
+      isExtinct: filter === 'extinct',
+      limit,
+      offset,
+    }, { signal, fetchImpl })
+    if (!Array.isArray(data.results)) {
+      throw new Error('GBIF returned an unexpected child-taxa response')
+    }
+    return {
+      results: data.results
+        .filter(isAcceptedNamedTaxon)
+        .map((taxon) => toChild(taxon, filter === 'extinct' ? 'extinct' : 'living')),
+      offset: data.offset,
+      limit: data.limit,
+      endOfRecords: data.endOfRecords,
+      filter,
+      listedRank: rank,
+    }
   }
 
   const data = await requestGbif(
@@ -224,18 +321,35 @@ export async function loadTaxonChildren(key, {
     throw new Error('GBIF returned an unexpected child-taxa response')
   }
 
+  const accepted = data.results.filter(isAcceptedNamedTaxon)
+  const rank = dominantRank(accepted)
+  let flags = null
+  let statusError = ''
+  if (rank) {
+    try {
+      flags = await loadFlagSets(key, rank, { signal, fetchImpl })
+    } catch (error) {
+      if (signal?.aborted) throw error
+      statusError = error.message
+    }
+  }
+
+  const results = accepted.map((taxon) => {
+    if (!flags || taxon.rank !== rank) return toChild(taxon, 'unchecked')
+    if (flags.extinct.has(taxon.key)) return toChild(taxon, 'extinct')
+    if (flags.living.has(taxon.key)) return toChild(taxon, 'living')
+    return toChild(taxon, flags.complete ? 'unknown' : 'unchecked')
+  })
+  results.sort((a, b) => STATE_ORDER[a.extinctState] - STATE_ORDER[b.extinctState])
+
   return {
-    results: data.results
-      .filter(isAcceptedNamedTaxon)
-      .map((taxon) => ({
-        key: taxon.key,
-        canonicalName: taxon.canonicalName || taxon.name || taxon.scientificName,
-        scientificName: taxon.scientificName || taxon.canonicalName || taxon.name,
-        rank: taxon.rank,
-        taxonomicStatus: taxon.taxonomicStatus || '',
-      })),
+    results,
     offset: data.offset,
     limit: data.limit,
     endOfRecords: data.endOfRecords,
+    filter,
+    statusError,
+    statusComplete: Boolean(flags?.complete),
   }
 }
+

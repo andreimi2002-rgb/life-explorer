@@ -165,6 +165,14 @@ baseline.
 - Paleobiology Database and other additional sources are candidates to assess,
   not currently integrated.
 
+Status (implemented): profile badge from GBIF, iNaturalist and IUCN-via-Wikidata
+signals; "Living" only with positive evidence; conflicts stay unknown. Child
+lists use GBIF `isExtinct` searches for the Living/Extinct filters (all
+descendants of the dominant child rank) and flag sets for badges and in-page
+grouping on All (capped at 2000 flags per set, otherwise "unchecked"). Not done:
+marking extinct ancestors in the classification path (no batch lookup), a
+recent-vs-prehistoric date, and PBDB.
+
 ### Information grouping (M4d)
 
 - Fetch information flags in batches per page of children (Wikipedia accepts
