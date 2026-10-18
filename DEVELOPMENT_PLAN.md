@@ -20,12 +20,12 @@ guessed.
 | M1 Search | GBIF scientific and English common-name search, useful result ordering, loading and error states | Search returns relevant results and empty/error states are clear |
 | M2 Taxon profile | Names, taxonomic status, classification, licensed iNaturalist photo and source links | Search results open a shareable profile with a no-photo fallback |
 | M3 General search and taxonomy explorer (complete) | Shared GBIF client with short-lived in-memory cache, broader search, synonyms/common names, taxon pages, paginated child taxa, navigate to parent/child and browser history | Any available group can be explored through its paginated hierarchy; benchmark groups include Rhinocerotidae, Canidae, Felidae, Fagaceae, Ranidae and Pythonidae |
-| M4a Photos (implemented on branch) | Resolve a verified Wikipedia/Commons lead image first, then any licensed iNaturalist taxon or observation photo, then the existing no-photo fallback | Benchmark taxa show photos only with author, licence and source link; higher-rank photos identify the member species shown or state when the member is not identifiable |
-| M4b Descriptions (extend) | Existing exact-match Wikipedia lead description; measure coverage, then consider a second exact matching tier, article sections, Wikidata facts, labelled ancestor and data-based fallbacks | Every description or fact shows source, link and licence; uncertain matches are omitted and missing articles have a useful labelled fallback |
-| M4c Extinct vs living | Classify taxa as living, extinct or unknown; distinguish recent extinction from prehistoric/fossil taxa | Profiles and child lists show status accurately, with unknown never treated as living |
+| M4a Photos (complete) | Resolve a verified Wikipedia/Commons lead image first, then any licensed iNaturalist taxon or observation photo, then the existing no-photo fallback | Benchmark taxa show photos only with author, licence and source link; higher-rank photos identify the member species shown or state when the member is not identifiable |
+| M4b Descriptions (implemented) | Exact taxon-to-article matching, selected article sections, Wikidata facts, labelled ancestor descriptions and data-based fallbacks | Every description or fact shows source, link and licence; uncertain matches are omitted and missing articles have a useful labelled fallback |
+| M4c Extinct vs living (implemented) | Classify taxa as living, extinct or unknown; distinguish recent extinction from prehistoric/fossil taxa | Profiles and child lists show status accurately, with unknown never treated as living |
 | M4d Information grouping and coverage | Fetch information flags in batches and group children by available information; add kingdom-level coverage reporting | No request per child; grouping remains consistent within pages and low-information taxa stay reachable |
 | M5 Distribution map | GBIF occurrence-based map with caveats about observation coverage | Maps load for different taxa and clearly distinguish records from complete range |
-| M6 Learning features | Random taxon, identification quiz, compare taxa and common ancestry | At least two complete, playable modes work with general taxon data |
+| M6 Learning features (in progress) | Random taxon by kingdom and living/extinct status (implemented), identification quiz, compare taxa and common ancestry | Random selection opens an accepted taxon with verified information; remaining learning modes work with general taxon data |
 | M7 Quality and delivery | Accessibility, responsive polish, PWA, caching/performance, end-to-end tests | Core flows pass automated checks and performance targets |
 | M8 Optional data | Conservation status and thematic filters where reliable data is available | Each added field has a clear source, attribution, and missing-data behavior |
 
@@ -57,10 +57,10 @@ guessed.
 
 ## Workflow and data rules
 
-- One branch per milestone or sub-milestone. Run tests and build before
-  requesting a Deploy Preview. Never merge or push to `main`; Deploy Previews
-  are free and production deployments consume the owner's limited Netlify
-  credits.
+- Use a branch for each milestone or sub-milestone. Run tests and build before
+  requesting a Deploy Preview; merge through a reviewed pull request and avoid
+  direct pushes to `main`. Deploy Previews are free and production deployments
+  consume Netlify credits.
 - Test varied ranks and kingdoms, plus ambiguous names such as "jaguar",
   "python", and "mouse"; these are reusable benchmark cases, not special-case
   implementations.
@@ -173,6 +173,20 @@ grouping on All (capped at 2000 flags per set, otherwise "unchecked"). Not done:
 marking extinct ancestors in the classification path (no batch lookup), a
 recent-vs-prehistoric date, and PBDB.
 
+### Random taxon selection (M6, implemented)
+
+- Choose a kingdom and any/living/extinct status, then open an accepted GBIF
+  species only when a licensed photo or a confidently matched description is
+  available.
+- Animalia sampling chooses an accepted order first, then samples species
+  within that order. This avoids the strong Coleoptera bias in GBIF’s first
+  99,000 animal species and avoids repeating the previous order on the next
+  pick.
+- Inspect a small batch of candidates in parallel to reduce the wait while
+  checking for usable information.
+- Remaining M6 work: identification quiz, taxon comparison and common-ancestor
+  activities.
+
 ### Information grouping (M4d)
 
 - Fetch information flags in batches per page of children (Wikipedia accepts
@@ -184,12 +198,12 @@ recent-vs-prehistoric date, and PBDB.
 
 ### Coverage measurement
 
-- Build a script that samples a few hundred random taxa per kingdom or phylum
-  and reports how many have a description, photo and extinct flag, and how
-  many are missed only because of the GBIF-key lookup.
-- Use the results to decide whether sources such as Paleobiology Database or
-  Wikispecies are worth adding and how to handle taxa that remain without
-  information. These sources are candidates only, not implemented.
+- The coverage script is implemented; run it with
+  npm run coverage -- --per-group 10.
+- Run larger per-kingdom samples to identify where licensed photos, descriptions
+  and extinction signals are missing before adding new sources.
+- Paleobiology Database and Wikispecies remain candidates to assess, not
+  integrated sources.
 
 ### Cleanup
 
@@ -198,10 +212,11 @@ recent-vs-prehistoric date, and PBDB.
 
 ### Suggested order
 
-1. M4a Photos.
-2. Coverage script.
-3. M4b extensions (second matching tier, ancestor fallback, sections and quick
-   facts).
-4. M4c Extinct vs living.
-5. M4d Information grouping.
-6. Consider additional sources for information that remains unavailable.
+1. M4d information grouping, batch-friendly lookups and kingdom-level coverage.
+2. Finish remaining M4c work: extinct ancestor marks and recent-versus-
+   prehistoric status where reliable evidence is available.
+3. M5 distribution maps with clear observation-coverage caveats.
+4. Complete M6 with an identification quiz, taxon comparisons and common
+   ancestry activities.
+5. M7 accessibility, performance, PWA and end-to-end quality work.
+6. Assess optional sources only where measured coverage shows a clear gap.
