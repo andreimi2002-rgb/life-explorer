@@ -29,15 +29,14 @@ than being built separately for individual species.
   licence, source link and, where needed, the represented member taxon.
 - Responsive search and profile pages.
 
-**M3 and M4a are complete.** M4b (descriptions) is in progress: the strict
-second name-matching tier and the labelled ancestor description are
-implemented; Wikipedia article sections (habitat, behaviour, diet, ecology,
-description) and Wikidata quick facts (IUCN status, food, habitat) are shown
-when available, with a species count for groups. A coverage
-script (`npm run coverage`) measures how many sampled taxa have a description,
-photo and extinction signal.
+**M3, M4a and M4b are complete.** M4b added the strict second name-matching
+tier and the labelled ancestor description; Wikipedia article sections
+(habitat, behaviour, diet, ecology, description) and Wikidata quick facts (IUCN
+status, food, habitat) are shown when available, with a species count for
+groups. A coverage script (`npm run coverage`) measures how many sampled taxa
+have a description, photo and extinction signal.
 
-M4c (extinct vs living) is implemented on its own branch: profiles show a
+M4c (extinct vs living) is complete once its pull request is merged: profiles show a
 Living / † Extinct / Status unknown badge with the sources behind it, and child
 lists have a Living / Extinct / All filter and a dagger mark. "Living" is shown
 only with positive evidence; no evidence or conflicting sources stay unknown.
