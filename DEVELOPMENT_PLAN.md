@@ -129,6 +129,15 @@ baseline.
 - Status: the second exact-name tier is implemented. On a 41-taxon live sample
   it found nothing extra, because those taxa have no Wikidata article at all;
   the tier is kept as a safe, tested fallback.
+- Implemented: selected article sections (habitat, behaviour, diet, ecology,
+  description; each shortened, with attribution) and a quick-facts card from
+  Wikidata (IUCN status, main food source, habitat; absent fields omitted).
+- Implemented: species count for genera and higher groups (GBIF Backbone), rank-
+  dependent section order, a fallback message that names the parent taxon, and
+  raw source errors moved into a collapsed "Technical details" block.
+- Not done: replacing per-profile SPARQL requests with a batch-friendly lookup
+  (to be done together with M4d), names in other languages, countries and
+  observation counts.
 - Data-based facts such as child-taxon counts, names in other languages,
   countries and observation counts are allowed with source attribution.
 - Adapt the panel by rank: species emphasise habitat, behaviour and diet;

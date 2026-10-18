@@ -244,6 +244,7 @@ function TaxonChildren({ taxonKey, onSelect }) {
 function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
   const accepted = detail.taxonomicStatus?.toLocaleUpperCase() === 'ACCEPTED'
   const displayName = detail.preferredCommonName || detail.vernacularNames[0] || detail.canonicalName
+  const parentTaxon = detail.classification.at(-2) || null
   const alternateNames = detail.vernacularNames.filter((name) =>
     name.toLocaleLowerCase() !== displayName.toLocaleLowerCase(),
   )
@@ -378,11 +379,80 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
             </p>
           </>
         ) : (
-          <p className={detail.wikipediaError ? 'wikipedia-unavailable' : 'wikipedia-empty'}>
-            {detail.wikipediaError
-              ? `Wikipedia description could not be loaded (${detail.wikipediaError}).`
-              : 'No confidently matched English Wikipedia description is available for this taxon.'}
-          </p>
+          <div className={detail.wikipediaError ? 'wikipedia-unavailable' : 'wikipedia-empty'}>
+            <p>
+              {detail.wikipediaError
+                ? 'The Wikipedia description could not be loaded right now; this does not mean none exists. '
+                : `No confidently matched English Wikipedia description is available for this ${formatRank(detail.rank)}`}
+              {!detail.wikipediaError && parentTaxon ? <> (it belongs to <strong>{parentTaxon.name}</strong>)</> : null}
+              {!detail.wikipediaError && '. '}
+              Its classification and related taxa are shown below.
+            </p>
+          </div>
+        )}
+
+        {detail.sections?.length > 0 && (
+          <div className="article-sections">
+            {detail.sections.map((section) => (
+              <div className="article-section" key={section.id}>
+                <h3>{section.label}</h3>
+                <p className="wikipedia-extract">{section.text}</p>
+              </div>
+            ))}
+            <p className="wikipedia-attribution">
+              Sections from the Wikipedia article{' '}
+              <a href={detail.wikipedia.articleUrl} target="_blank" rel="noreferrer">
+                “{detail.wikipedia.title}”
+              </a>
+              {' '}· Text available under{' '}
+              <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">
+                CC BY-SA
+              </a>
+              .
+            </p>
+          </div>
+        )}
+
+        {(detail.quickFacts?.length > 0 || detail.speciesCount !== null) && (
+          <div className="quick-facts">
+            <h3>Quick facts</h3>
+            <dl>
+              {detail.quickFacts?.map((fact) => (
+                <div key={fact.id}>
+                  <dt>{fact.label}</dt>
+                  <dd>
+                    {fact.values.join(', ')}{' '}
+                    <a href={fact.sourceUrl} target="_blank" rel="noreferrer">Wikidata</a>
+                  </dd>
+                </div>
+              ))}
+              {detail.speciesCount !== null && (
+                <div>
+                  <dt>Accepted species included</dt>
+                  <dd>
+                    {detail.speciesCount.toLocaleString('en')}{' '}
+                    <a
+                      href={`https://www.gbif.org/species/${detail.key}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      GBIF Backbone
+                    </a>
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        )}
+
+        {(detail.wikipediaError || detail.sourceErrors?.length > 0) && (
+          <details className="technical-details">
+            <summary>Technical details: some sources could not be loaded</summary>
+            <ul>
+              {detail.wikipediaError && <li>Wikipedia description: {detail.wikipediaError}</li>}
+              {detail.sourceErrors?.map((message) => <li key={message}>{message}</li>)}
+            </ul>
+          </details>
         )}
       </section>
 

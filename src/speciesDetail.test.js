@@ -325,3 +325,62 @@ test('loadSpeciesDetail does not use an ancestor when the taxon has its own arti
   assert.equal(detail.wikipedia.title, 'Canis_lupus')
   assert.equal(detail.ancestorDescription, null)
 })
+
+test('loadSpeciesDetail adds sections, quick facts and a species count, keeping failures separate', async () => {
+  const genus = { ...baseSpecies(), canonicalName: 'Canis', scientificName: 'Canis Linnaeus, 1758', rank: 'GENUS' }
+  let factsFail = false
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/parents')) {
+      return response([{ key: 1, canonicalName: 'Animalia', rank: 'KINGDOM' }])
+    }
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/vernacularNames')) {
+      return response({ results: [] })
+    }
+    if (url.hostname === 'api.gbif.org' && url.pathname.endsWith('/species/search')) {
+      assert.equal(url.searchParams.get('highertaxonKey'), '42')
+      assert.equal(url.searchParams.get('rank'), 'SPECIES')
+      return response({ count: 7 })
+    }
+    if (url.hostname === 'api.gbif.org') return response(genus)
+    if (url.hostname === 'api.inaturalist.org') return response({ results: [] })
+    if (url.hostname === 'query.wikidata.org') {
+      const query = url.searchParams.get('query')
+      if (query.includes('wdt:P141')) {
+        return factsFail
+          ? response({}, 503)
+          : response({ results: { bindings: [{ fact: { value: 'status' }, valueLabel: { value: 'Least concern' } }] } })
+      }
+      return response({
+        results: {
+          bindings: [{
+            item: { value: 'http://www.wikidata.org/entity/Q5' },
+            taxonName: { value: 'Canis' },
+            article: { value: 'https://en.wikipedia.org/wiki/Canis' },
+          }],
+        },
+      })
+    }
+    if (url.pathname === '/w/api.php') {
+      return response({
+        query: {
+          pages: [{
+            extract: `== Description ==\n${'Members are medium-sized canids. '.repeat(5)}`,
+          }],
+        },
+      })
+    }
+    return response({ title: 'Canis', extract: 'Canis is a genus.' })
+  }
+
+  const detail = await loadSpeciesDetail(42, { fetchImpl })
+  assert.equal(detail.speciesCount, 7)
+  assert.deepEqual(detail.sections.map((section) => section.id), ['description'])
+  assert.deepEqual(detail.quickFacts.map((fact) => fact.values), [['Least concern']])
+  assert.deepEqual(detail.sourceErrors, [])
+
+  factsFail = true
+  const failed = await loadSpeciesDetail(42, { fetchImpl: async (r) => fetchImpl(r) })
+  assert.equal(failed.wikipedia.title, 'Canis')
+  assert.match(failed.sourceErrors[0], /facts request failed \(503\)/)
+})

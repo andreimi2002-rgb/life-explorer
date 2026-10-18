@@ -31,7 +31,9 @@ than being built separately for individual species.
 
 **M3 and M4a are complete.** M4b (descriptions) is in progress: the strict
 second name-matching tier and the labelled ancestor description are
-implemented; article sections and Wikidata quick facts are not yet. A coverage
+implemented; Wikipedia article sections (habitat, behaviour, diet, ecology,
+description) and Wikidata quick facts (IUCN status, food, habitat) are shown
+when available, with a species count for groups. A coverage
 script (`npm run coverage`) measures how many sampled taxa have a description,
 photo and extinction signal.
 

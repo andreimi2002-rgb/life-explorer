@@ -981,6 +981,60 @@ input:focus-visible {
   text-underline-offset: 2px;
 }
 
+.article-sections,
+.quick-facts,
+.technical-details {
+  margin-top: 22px;
+}
+
+.article-section h3,
+.quick-facts h3,
+.ancestor-heading {
+  margin: 18px 0 6px;
+  color: #2f4a37;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.article-section .wikipedia-extract {
+  font-size: 15px;
+  white-space: pre-line;
+}
+
+.quick-facts dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.quick-facts dl > div {
+  display: grid;
+  grid-template-columns: minmax(130px, 200px) 1fr;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.quick-facts dt {
+  color: #7b877d;
+}
+
+.quick-facts dd {
+  margin: 0;
+  color: #3f503f;
+}
+
+.quick-facts dd a {
+  margin-left: 6px;
+  color: #496e52;
+  font-size: 11px;
+}
+
+.technical-details {
+  color: #844a36;
+  font-size: 11px;
+}
+
 .wikipedia-unavailable {
   color: #844a36;
 }
