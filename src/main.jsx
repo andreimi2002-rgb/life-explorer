@@ -341,6 +341,9 @@ function SpeciesDetail({ detail, onNavigateTaxon, onBack }) {
               </a>
               {' '}· Matched through{' '}
               <a href={detail.wikipedia.wikidataUrl} target="_blank" rel="noreferrer">Wikidata</a>
+              {detail.wikipedia.matchedBy === 'name'
+                ? ' (exact scientific name, rank and classification)'
+                : ' (GBIF identifier)'}
               {' '}· Text available under{' '}
               <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">
                 CC BY-SA

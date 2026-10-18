@@ -46,7 +46,13 @@ export async function loadSpeciesDetail(key, {
   let preferredCommonName = ''
   let wikipedia = null
   let wikipediaError = ''
-  const wikipediaPromise = loadWikipediaDescription(species, { signal, fetchImpl })
+  const wikipediaPromise = loadWikipediaDescription(species, {
+    signal,
+    fetchImpl,
+    ancestorNames: parents
+      .map((parent) => parent.canonicalName)
+      .filter(Boolean),
+  })
     .then((description) => ({ description, error: '' }))
     .catch((error) => {
       if (signal?.aborted) throw error

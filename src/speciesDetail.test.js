@@ -259,6 +259,7 @@ test('loadSpeciesDetail includes a confidently matched Wikipedia description', a
     articleUrl: 'https://en.wikipedia.org/wiki/Wolf',
     wikidataUrl: 'http://www.wikidata.org/entity/Q999',
     image: null,
+    matchedBy: 'gbif-key',
   })
   assert.equal(detail.wikipediaError, '')
 })
