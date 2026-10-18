@@ -14,7 +14,9 @@ than being built separately for individual species.
 - Taxon profiles with common and scientific names, rank, status, and
   navigable classification.
 - Randomly open an accepted GBIF species with a verified photo or description,
-  filtered by kingdom and living/extinct status.
+  filtered by kingdom and living/extinct status. Animal selections are sampled
+  across taxonomic orders to avoid GBIF’s capped, beetle-heavy species pages,
+  and repeated animal picks avoid the previous order.
 - Taxonomic child lists omit unranked and non-accepted backbone records.
 - Search URLs preserve the query so returning from a profile restores its
   result list.
@@ -31,19 +33,19 @@ than being built separately for individual species.
   licence, source link and, where needed, the represented member taxon.
 - Responsive search and profile pages.
 
-**M3 and M4a are complete.** M4b (descriptions) is in progress: the strict
-second name-matching tier and the labelled ancestor description are
-implemented; Wikipedia article sections (habitat, behaviour, diet, ecology,
-description) and Wikidata quick facts (IUCN status, food, habitat) are shown
-when available, with a species count for groups. A coverage
-script (`npm run coverage`) measures how many sampled taxa have a description,
-photo and extinction signal.
+**M3, M4a, M4b and M4c are implemented.** Profiles include licensed photos,
+confidently matched Wikipedia descriptions, labelled ancestor descriptions,
+selected article sections, Wikidata quick facts and species counts where
+available. Extinction badges and child-list filters combine GBIF, iNaturalist
+and IUCN signals; missing or conflicting evidence stays unknown. Remaining
+work includes batched information lookups, extinct ancestor marks and
+distinguishing recent from prehistoric extinctions.
 
-M4c (extinct vs living) is implemented on its own branch: profiles show a
-Living / † Extinct / Status unknown badge with the sources behind it, and child
-lists have a Living / Extinct / All filter and a dagger mark. "Living" is shown
-only with positive evidence; no evidence or conflicting sources stay unknown.
-Extinct ancestors in the classification path are not marked yet.
+Random taxon selection is also implemented: choose a kingdom and living or
+extinct status, then open an accepted species with a verified photo or
+description. The animal sampler chooses orders before species because GBIF’s
+first 99,000 animal records were heavily skewed toward beetles. Quizzes,
+taxon comparisons and common-ancestor activities remain future work.
 
 ## Data and coverage
 
@@ -87,7 +89,7 @@ npm run coverage -- --per-group 10   # coverage report, separate from the site
 ```
 
 Milestones, acceptance criteria, and source-data rules are in
-[DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md). Work is developed on one branch
-per milestone and checked with a Netlify Deploy Preview. Never merge or push to
-`main`: production deployments cost Netlify credits, and the owner's budget is
-limited. Deploy Previews are free.
+[DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md). Work is developed on branches,
+checked with tests, a production build and a Netlify Deploy Preview, then merged
+through a reviewed pull request. Avoid direct pushes to `main`. Deploy
+Previews are free; production deployments consume Netlify credits.
