@@ -3,6 +3,16 @@ import { requestGbif } from './gbif.js'
 const GBIF_BACKBONE_KEY = 'd7dddbf4-2cf0-4f39-9b2a-bb099caae36c'
 const INATURALIST_API = 'https://api.inaturalist.org/v1'
 const RESULT_LIMIT = 12
+export const RANDOM_TAXON_GROUPS = [
+  { key: '', label: 'All life' },
+  { key: 1, label: 'Animals' },
+  { key: 6, label: 'Plants' },
+  { key: 5, label: 'Fungi' },
+  { key: 3, label: 'Bacteria' },
+  { key: 4, label: 'Chromists' },
+  { key: 7, label: 'Protozoa' },
+  { key: 2, label: 'Archaea' },
+]
 const COMMON_NAME_ALIASES = new Map([
   ['wolf', ['gray wolf']],
   ['mouse', ['house mouse']],
@@ -350,6 +360,51 @@ export async function loadTaxonChildren(key, {
     filter,
     statusError,
     statusComplete: Boolean(flags?.complete),
+  }
+}
+
+export async function loadRandomTaxon(groupKey = '', {
+  extinct = 'any',
+  signal,
+  fetchImpl = fetch,
+  random = Math.random,
+} = {}) {
+  const group = RANDOM_TAXON_GROUPS.find((candidate) => String(candidate.key) === String(groupKey))
+  if (!group) throw new Error('Unknown taxon group')
+  if (!['any', 'living', 'extinct'].includes(extinct)) throw new Error('Unknown extinction filter')
+
+  const params = {
+    datasetKey: GBIF_BACKBONE_KEY,
+    rank: 'SPECIES',
+    status: 'ACCEPTED',
+    limit: 0,
+  }
+  if (group.key) params.highertaxonKey = group.key
+  if (extinct !== 'any') params.isExtinct = extinct === 'extinct'
+  const countData = await requestGbif('/species/search', params, { signal, fetchImpl })
+  if (!Number.isInteger(countData.count) || countData.count < 1) {
+    const groupName = group.label === 'All life' ? 'life' : group.label.toLowerCase()
+    const stateName = extinct === 'any' ? '' : ` that are ${extinct}`
+    throw new Error(`No accepted${stateName} species are available for ${groupName}`)
+  }
+
+  // GBIF caps deep paging; sample a random position in the accessible range.
+  const accessibleCount = Math.min(countData.count, 99000)
+  const offset = Math.floor(random() * accessibleCount)
+  const data = await requestGbif('/species/search', {
+    ...params,
+    limit: 1,
+    offset,
+  }, { signal, fetchImpl })
+  const taxon = data.results?.find(isAcceptedNamedTaxon)
+  if (!taxon) throw new Error('GBIF did not return a usable random species')
+
+  return {
+    key: taxon.key,
+    canonicalName: taxon.canonicalName || taxon.name || taxon.scientificName,
+    scientificName: taxon.scientificName || taxon.canonicalName || taxon.name,
+    rank: taxon.rank,
+    taxonomicStatus: taxon.taxonomicStatus || taxon.status || '',
   }
 }
 

@@ -13,6 +13,7 @@ than being built separately for individual species.
   collapsed unless there are no common-name results.
 - Taxon profiles with common and scientific names, rank, status, and
   navigable classification.
+- Randomly open an accepted GBIF species by kingdom and living/extinct status.
 - Taxonomic child lists omit unranked and non-accepted backbone records.
 - Search URLs preserve the query so returning from a profile restores its
   result list.
