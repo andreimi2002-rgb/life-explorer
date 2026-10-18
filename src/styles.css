@@ -324,6 +324,12 @@ input:focus-visible {
   font-size: 12px;
 }
 
+.random-progress {
+  margin: 8px 0 0;
+  color: #66776c;
+  font-size: 12px;
+}
+
 .search-form > svg {
   flex: 0 0 21px;
   width: 21px;

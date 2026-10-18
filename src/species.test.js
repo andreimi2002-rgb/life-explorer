@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { loadTaxonChildren, searchSpecies } from './species.js'
+import { loadRandomTaxon, loadTaxonChildren, searchSpecies } from './species.js'
 
 function response(body, status = 200) {
   return {
@@ -457,5 +457,72 @@ test('loadTaxonChildren rejects invalid keys and malformed responses', async () 
   await assert.rejects(
     loadTaxonChildren(9415, { fetchImpl: async () => response({}) }),
     /unexpected child-taxa response/,
+  )
+})
+
+test('loadRandomTaxon checks candidates until it finds one with information', async () => {
+  const requested = []
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    requested.push(url)
+    if (url.pathname.endsWith('/species/search') && url.searchParams.get('limit') === '0') {
+      return response({ count: 100 })
+    }
+    if (url.pathname.endsWith('/species/search')) {
+      return response({
+        results: [
+          { key: 101, canonicalName: 'Species alpha', scientificName: 'Species alpha', rank: 'SPECIES', taxonomicStatus: 'ACCEPTED' },
+          { key: 102, canonicalName: 'Species beta', scientificName: 'Species beta', rank: 'SPECIES', taxonomicStatus: 'ACCEPTED' },
+        ],
+      })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const result = await loadRandomTaxon(1, {
+    extinct: 'living',
+    fetchImpl,
+    random: () => 0,
+    avoidOrderKey: 6,
+    inspectTaxon: async (taxon) => {
+      const information = {
+        hasInformation: true,
+        orderKey: taxon.key === 101 ? 5 : 6,
+      }
+      return information
+    },
+  })
+
+  assert.equal(result.taxon.key, 101)
+  assert.equal(result.information.hasInformation, true)
+  assert.equal(result.checked, 2)
+  const selection = requested.find((url) => url.searchParams.get('limit') === '12')
+  assert.equal(selection.searchParams.get('highertaxonKey'), '1')
+  assert.equal(selection.searchParams.get('isExtinct'), 'false')
+})
+
+test('loadRandomTaxon reports when no sampled species has verified information', async () => {
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.searchParams.get('limit') === '0') return response({ count: 1 })
+    return response({
+      results: [{
+        key: 201,
+        canonicalName: 'Species without content',
+        scientificName: 'Species without content',
+        rank: 'SPECIES',
+        taxonomicStatus: 'ACCEPTED',
+      }],
+    })
+  }
+
+  await assert.rejects(
+    loadRandomTaxon('', {
+      fetchImpl,
+      random: () => 0,
+      maxCandidates: 1,
+      inspectTaxon: async () => null,
+    }),
+    /No random species with a verified photo or description was found/,
   )
 })

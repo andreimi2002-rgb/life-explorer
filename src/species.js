@@ -368,10 +368,17 @@ export async function loadRandomTaxon(groupKey = '', {
   signal,
   fetchImpl = fetch,
   random = Math.random,
+  inspectTaxon,
+  maxCandidates = 24,
+  avoidOrderKey = null,
 } = {}) {
   const group = RANDOM_TAXON_GROUPS.find((candidate) => String(candidate.key) === String(groupKey))
   if (!group) throw new Error('Unknown taxon group')
   if (!['any', 'living', 'extinct'].includes(extinct)) throw new Error('Unknown extinction filter')
+  if (typeof inspectTaxon !== 'function') throw new Error('A taxon information check is required')
+  if (!Number.isInteger(maxCandidates) || maxCandidates < 1) {
+    throw new Error('maxCandidates must be a positive integer')
+  }
 
   const params = {
     datasetKey: GBIF_BACKBONE_KEY,
@@ -388,23 +395,70 @@ export async function loadRandomTaxon(groupKey = '', {
     throw new Error(`No accepted${stateName} species are available for ${groupName}`)
   }
 
-  // GBIF caps deep paging; sample a random position in the accessible range.
+  // GBIF caps deep paging; sample random pages within its accessible range.
   const accessibleCount = Math.min(countData.count, 99000)
-  const offset = Math.floor(random() * accessibleCount)
-  const data = await requestGbif('/species/search', {
-    ...params,
-    limit: 1,
-    offset,
-  }, { signal, fetchImpl })
-  const taxon = data.results?.find(isAcceptedNamedTaxon)
-  if (!taxon) throw new Error('GBIF did not return a usable random species')
+  const pageSize = Math.min(12, accessibleCount)
+  const maxPages = Math.ceil(maxCandidates / pageSize) + 2
+  const seenKeys = new Set()
+  let checked = 0
+  let inspectionFailures = 0
+  let lastInspectionError = null
+  let sameOrderFallback = null
 
-  return {
-    key: taxon.key,
-    canonicalName: taxon.canonicalName || taxon.name || taxon.scientificName,
-    scientificName: taxon.scientificName || taxon.canonicalName || taxon.name,
-    rank: taxon.rank,
-    taxonomicStatus: taxon.taxonomicStatus || taxon.status || '',
+  for (let pageIndex = 0; pageIndex < maxPages && checked < maxCandidates; pageIndex += 1) {
+    if (signal?.aborted) throw signal.reason
+    if (seenKeys.size >= accessibleCount) break
+    const lastStart = Math.max(0, accessibleCount - pageSize)
+    const offset = Math.floor(random() * (lastStart + 1))
+    const data = await requestGbif('/species/search', {
+      ...params,
+      limit: pageSize,
+      offset,
+    }, { signal, fetchImpl })
+    const candidates = (data.results || []).filter((taxon) =>
+      isAcceptedNamedTaxon(taxon) && !seenKeys.has(taxon.key),
+    )
+
+    // Shuffle records within each page so adjacent GBIF sort positions do not
+    // always dominate the random choice.
+    for (let index = candidates.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(random() * (index + 1))
+      const current = candidates[index]
+      candidates[index] = candidates[swapIndex]
+      candidates[swapIndex] = current
+    }
+
+    for (const record of candidates) {
+      if (checked >= maxCandidates) break
+      seenKeys.add(record.key)
+      checked += 1
+      const taxon = {
+        key: record.key,
+        canonicalName: record.canonicalName || record.name || record.scientificName,
+        scientificName: record.scientificName || record.canonicalName || record.name,
+        rank: record.rank,
+        taxonomicStatus: record.taxonomicStatus || record.status || '',
+      }
+      try {
+        const detail = await inspectTaxon(taxon, checked)
+        if (detail) {
+          if (avoidOrderKey !== null && String(detail.orderKey) === String(avoidOrderKey)) {
+            sameOrderFallback ||= { taxon, information: detail, checked }
+          } else {
+            return { taxon, information: detail, checked }
+          }
+        }
+      } catch (error) {
+        if (signal?.aborted) throw error
+        inspectionFailures += 1
+        lastInspectionError = error
+      }
+    }
   }
+
+  if (sameOrderFallback) return sameOrderFallback
+  if (checked === 0) throw new Error('GBIF did not return any usable random species')
+  if (lastInspectionError && inspectionFailures === checked) throw lastInspectionError
+  throw new Error(`No random species with a verified photo or description was found among ${checked} candidates`)
 }
 

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { SOURCES } from './sources.js'
 import { loadRandomTaxon, loadTaxonChildren, RANDOM_TAXON_GROUPS, searchSpecies } from './species.js'
-import { loadSpeciesDetail } from './speciesDetail.js'
+import { loadSpeciesDetail, loadTaxonInformation } from './speciesDetail.js'
 import './styles.css'
 
 const EXAMPLE_SEARCHES = ['wolf', 'oak', 'frog', 'jaguar', 'python', 'mouse']
@@ -623,6 +623,8 @@ function App() {
   const [randomExtinct, setRandomExtinct] = useState('any')
   const [randomLoading, setRandomLoading] = useState(false)
   const [randomError, setRandomError] = useState('')
+  const randomController = useRef(null)
+  const lastRandomOrderKey = useRef(null)
   const [selectedKey, setSelectedKey] = useState(initialUrl.searchParams.get('species') || '')
   const [taxonHint, setTaxonHint] = useState(() => {
     const key = initialUrl.searchParams.get('species')
@@ -787,15 +789,32 @@ function App() {
   }
 
   const openRandomTaxon = async () => {
+    randomController.current?.abort()
+    const controller = new AbortController()
+    randomController.current = controller
     setRandomLoading(true)
     setRandomError('')
     try {
-      const taxon = await loadRandomTaxon(randomGroup, { extinct: randomExtinct })
-      navigateTaxon(taxon)
+      const result = await loadRandomTaxon(randomGroup, {
+        extinct: randomExtinct,
+        signal: controller.signal,
+        avoidOrderKey: lastRandomOrderKey.current,
+        inspectTaxon: (taxon) => loadTaxonInformation(taxon, {
+          signal: controller.signal,
+        }).then((information) => information.hasInformation ? information : null),
+      })
+      if (controller.signal.aborted) return
+      lastRandomOrderKey.current = result.information.orderKey
+      navigateTaxon(result.taxon)
     } catch (error) {
-      setRandomError(`Could not find a random taxon: ${error.message}`)
+      if (!controller.signal.aborted) {
+        setRandomError(`Could not find a random taxon: ${error.message}`)
+      }
     } finally {
-      setRandomLoading(false)
+      if (randomController.current === controller) {
+        randomController.current = null
+        setRandomLoading(false)
+      }
     }
   }
 
@@ -829,6 +848,7 @@ function App() {
   }
 
   const updateQuery = (value) => {
+    randomController.current?.abort()
     setQuery(value)
     const url = new URL(window.location.href)
     if (selectedKey) {
@@ -973,13 +993,18 @@ function App() {
                     <option value="extinct">Extinct</option>
                   </select>
                   <button type="button" onClick={openRandomTaxon} disabled={randomLoading}>
-                    {randomLoading ? 'Finding…' : 'Random'}
+                    {randomLoading ? 'Checking…' : 'Random'}
                   </button>
                 </div>
                 </div>
                 <p id="search-status" className="search-status" role="status" aria-live="polite">
                   {statusText}
                 </p>
+                {randomLoading && (
+                  <p className="random-progress" role="status">
+                    Checking for a verified photo or description…
+                  </p>
+                )}
                 {randomError && <p className="random-error" role="alert">{randomError}</p>}
                 <div className="example-searches" aria-label="Try a search">
                   <span>Try:</span>
