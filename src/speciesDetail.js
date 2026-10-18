@@ -37,6 +37,43 @@ async function loadAncestorDescription(parents, { signal, fetchImpl }) {
   return null
 }
 
+// Lightweight preflight for Random: look only for content that the profile can
+// actually display, without loading sections, facts, extinction data or counts.
+export async function loadTaxonInformation(taxon, {
+  signal,
+  fetchImpl = fetch,
+} = {}) {
+  const parents = await requestGbif(`/species/${Number(taxon.key)}/parents`, {}, {
+    signal,
+    fetchImpl,
+  })
+  if (!Array.isArray(parents)) {
+    throw new Error('GBIF returned an unexpected classification response')
+  }
+
+  const ancestorNames = parents.map((parent) => parent.canonicalName).filter(Boolean)
+  const orderKey = parents.find((parent) => parent.rank === 'ORDER')?.key ?? null
+  const wikipedia = await loadWikipediaDescription(taxon, {
+    signal,
+    fetchImpl,
+    ancestorNames,
+  })
+  const ancestorDescription = wikipedia
+    ? null
+    : await loadAncestorDescription(parents, { signal, fetchImpl })
+  const resolvedPhoto = await resolvePhoto(taxon, { wikipedia, signal, fetchImpl })
+
+  return {
+    photo: resolvedPhoto.photo,
+    wikipedia,
+    ancestorDescription,
+    orderKey,
+    hasInformation: Boolean(
+      resolvedPhoto.photo || wikipedia?.extract || ancestorDescription?.extract,
+    ),
+  }
+}
+
 export async function loadSpeciesDetail(key, {
   signal,
   fetchImpl = fetch,

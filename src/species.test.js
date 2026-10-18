@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { loadTaxonChildren, searchSpecies } from './species.js'
+import { loadRandomTaxon, loadTaxonChildren, searchSpecies } from './species.js'
 
 function response(body, status = 200) {
   return {
@@ -457,5 +457,155 @@ test('loadTaxonChildren rejects invalid keys and malformed responses', async () 
   await assert.rejects(
     loadTaxonChildren(9415, { fetchImpl: async () => response({}) }),
     /unexpected child-taxa response/,
+  )
+})
+
+test('loadRandomTaxon checks candidates until it finds one with information', async () => {
+  const requested = []
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    requested.push(url)
+    if (url.pathname.endsWith('/species/search') && url.searchParams.get('limit') === '0') {
+      return response({ count: 100 })
+    }
+    if (url.pathname.endsWith('/species/search')) {
+      return response({
+        results: [
+          { key: 101, canonicalName: 'Species alpha', scientificName: 'Species alpha', rank: 'SPECIES', taxonomicStatus: 'ACCEPTED' },
+          { key: 102, canonicalName: 'Species beta', scientificName: 'Species beta', rank: 'SPECIES', taxonomicStatus: 'ACCEPTED' },
+        ],
+      })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const result = await loadRandomTaxon(1, {
+    extinct: 'living',
+    fetchImpl,
+    random: () => 0,
+    avoidOrderKey: 6,
+    inspectTaxon: async (taxon) => {
+      const information = {
+        hasInformation: true,
+        orderKey: taxon.key === 101 ? 5 : 6,
+      }
+      return information
+    },
+  })
+
+  assert.equal(result.taxon.key, 101)
+  assert.equal(result.information.hasInformation, true)
+  assert.equal(result.checked, 2)
+  const selection = requested.find((url) =>
+    url.searchParams.get('rank') === 'SPECIES' && url.searchParams.get('highertaxonKey') === '1',
+  )
+  assert.equal(selection.searchParams.get('highertaxonKey'), '1')
+  assert.equal(selection.searchParams.get('isExtinct'), 'false')
+})
+
+test('loadRandomTaxon skips informative candidates from the previous order', async () => {
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.searchParams.get('limit') === '0') return response({ count: 2 })
+    return response({
+      results: [
+        { key: 301, canonicalName: 'Beetle alpha', scientificName: 'Beetle alpha', rank: 'SPECIES', taxonomicStatus: 'ACCEPTED' },
+        { key: 302, canonicalName: 'Bird beta', scientificName: 'Bird beta', rank: 'SPECIES', taxonomicStatus: 'ACCEPTED' },
+      ],
+    })
+  }
+
+  const result = await loadRandomTaxon(1, {
+    fetchImpl,
+    random: () => 0,
+    avoidOrderKey: 1470,
+    inspectTaxon: async (taxon) => ({
+      hasInformation: true,
+      orderKey: taxon.key === 301 ? 1470 : 729,
+    }),
+  })
+
+  assert.equal(result.taxon.key, 302)
+  assert.equal(result.information.orderKey, 729)
+})
+
+test('loadRandomTaxon never returns the previous order as a fallback', async () => {
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.searchParams.get('limit') === '0') return response({ count: 1 })
+    return response({
+      results: [{ key: 401, canonicalName: 'Beetle gamma', scientificName: 'Beetle gamma', rank: 'SPECIES', taxonomicStatus: 'ACCEPTED' }],
+    })
+  }
+
+  await assert.rejects(
+    loadRandomTaxon(1, {
+      fetchImpl,
+      avoidOrderKey: 1470,
+      inspectTaxon: async () => ({ hasInformation: true, orderKey: 1470 }),
+    }),
+    /outside the previous taxonomic order/,
+  )
+})
+
+test('Animalia sampling chooses orders before sampling their species', async () => {
+  const requested = []
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    requested.push(url)
+    const rank = url.searchParams.get('rank')
+    const parentKey = url.searchParams.get('highertaxonKey')
+    const limit = url.searchParams.get('limit')
+    if (rank === 'SPECIES' && parentKey === '1' && limit === '0') return response({ count: 100 })
+    if (rank === 'ORDER' && parentKey === '1' && limit === '0') return response({ count: 2 })
+    if (rank === 'ORDER' && limit === '2') return response({ results: [
+      { key: 1470, canonicalName: 'Coleoptera', scientificName: 'Coleoptera', rank: 'ORDER', taxonomicStatus: 'ACCEPTED' },
+      { key: 729, canonicalName: 'Passeriformes', scientificName: 'Passeriformes', rank: 'ORDER', taxonomicStatus: 'ACCEPTED' },
+    ] })
+    if (rank === 'SPECIES' && limit === '0') return response({ count: 1 })
+    if (rank === 'SPECIES' && limit === '1') {
+      const order = Number(parentKey)
+      return response({ results: [{ key: order + 1000, canonicalName: `Species ${order}`, scientificName: `Species ${order}`, rank: 'SPECIES', taxonomicStatus: 'ACCEPTED' }] })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const result = await loadRandomTaxon(1, {
+    fetchImpl,
+    random: () => 0,
+    avoidOrderKey: 1470,
+    inspectTaxon: async (taxon) => ({ hasInformation: true, orderKey: taxon.key - 1000 }),
+  })
+
+  assert.equal(result.taxon.key, 1729)
+  assert.equal(result.information.orderKey, 729)
+  assert.ok(requested.some((url) => url.searchParams.get('rank') === 'ORDER'))
+  assert.ok(requested.some((url) => url.searchParams.get('highertaxonKey') === '729'))
+  assert.ok(!requested.some((url) => url.searchParams.get('highertaxonKey') === '1470'))
+})
+
+test('loadRandomTaxon reports when no sampled species has verified information', async () => {
+  const fetchImpl = async (request) => {
+    const url = new URL(request)
+    if (url.searchParams.get('limit') === '0') return response({ count: 1 })
+    return response({
+      results: [{
+        key: 201,
+        canonicalName: 'Species without content',
+        scientificName: 'Species without content',
+        rank: 'SPECIES',
+        taxonomicStatus: 'ACCEPTED',
+      }],
+    })
+  }
+
+  await assert.rejects(
+    loadRandomTaxon('', {
+      fetchImpl,
+      random: () => 0,
+      maxCandidates: 1,
+      inspectTaxon: async () => null,
+    }),
+    /No random species with a verified photo or description was found/,
   )
 })

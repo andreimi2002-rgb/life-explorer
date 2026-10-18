@@ -3,6 +3,16 @@ import { requestGbif } from './gbif.js'
 const GBIF_BACKBONE_KEY = 'd7dddbf4-2cf0-4f39-9b2a-bb099caae36c'
 const INATURALIST_API = 'https://api.inaturalist.org/v1'
 const RESULT_LIMIT = 12
+export const RANDOM_TAXON_GROUPS = [
+  { key: '', label: 'All life' },
+  { key: 1, label: 'Animals' },
+  { key: 6, label: 'Plants' },
+  { key: 5, label: 'Fungi' },
+  { key: 3, label: 'Bacteria' },
+  { key: 4, label: 'Chromists' },
+  { key: 7, label: 'Protozoa' },
+  { key: 2, label: 'Archaea' },
+]
 const COMMON_NAME_ALIASES = new Map([
   ['wolf', ['gray wolf']],
   ['mouse', ['house mouse']],
@@ -351,5 +361,178 @@ export async function loadTaxonChildren(key, {
     statusError,
     statusComplete: Boolean(flags?.complete),
   }
+}
+
+export async function loadRandomTaxon(groupKey = '', {
+  extinct = 'any',
+  signal,
+  fetchImpl = fetch,
+  random = Math.random,
+  inspectTaxon,
+  maxCandidates = 48,
+  avoidOrderKey = null,
+} = {}) {
+  const group = RANDOM_TAXON_GROUPS.find((candidate) => String(candidate.key) === String(groupKey))
+  if (!group) throw new Error('Unknown taxon group')
+  if (!['any', 'living', 'extinct'].includes(extinct)) throw new Error('Unknown extinction filter')
+  if (typeof inspectTaxon !== 'function') throw new Error('A taxon information check is required')
+  if (!Number.isInteger(maxCandidates) || maxCandidates < 1) {
+    throw new Error('maxCandidates must be a positive integer')
+  }
+
+  const params = {
+    datasetKey: GBIF_BACKBONE_KEY,
+    rank: 'SPECIES',
+    status: 'ACCEPTED',
+    limit: 0,
+  }
+  if (group.key) params.highertaxonKey = group.key
+  if (extinct !== 'any') params.isExtinct = extinct === 'extinct'
+  const countData = await requestGbif('/species/search', params, { signal, fetchImpl })
+  if (!Number.isInteger(countData.count) || countData.count < 1) {
+    const groupName = group.label === 'All life' ? 'life' : group.label.toLowerCase()
+    const stateName = extinct === 'any' ? '' : ` that are ${extinct}`
+    throw new Error(`No accepted${stateName} species are available for ${groupName}`)
+  }
+
+  // GBIF caps deep paging; sample random pages within its accessible range.
+  const accessibleCount = Math.min(countData.count, 99000)
+  const pageSize = Math.min(12, accessibleCount)
+  const maxPages = Math.ceil(maxCandidates / pageSize) + 2
+  const seenKeys = new Set()
+  let checked = 0
+  let inspectionFailures = 0
+  let lastInspectionError = null
+  let sameOrderFound = false
+  const inspectedKeys = new Set()
+
+  const inspectCandidates = async (records) => {
+    const candidates = (records || []).filter((taxon) =>
+      isAcceptedNamedTaxon(taxon) && !inspectedKeys.has(taxon.key),
+    )
+
+    for (let index = candidates.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(random() * (index + 1))
+      const current = candidates[index]
+      candidates[index] = candidates[swapIndex]
+      candidates[swapIndex] = current
+    }
+
+    const batch = candidates.slice(0, maxCandidates - checked).map((record) => ({
+      key: record.key,
+      canonicalName: record.canonicalName || record.name || record.scientificName,
+      scientificName: record.scientificName || record.canonicalName || record.name,
+      rank: record.rank,
+      taxonomicStatus: record.taxonomicStatus || record.status || '',
+    }))
+    for (const taxon of batch) inspectedKeys.add(taxon.key)
+
+    for (let start = 0; start < batch.length; start += 4) {
+      if (signal?.aborted) throw signal.reason
+      const chunk = batch.slice(start, start + 4)
+      const results = await Promise.all(chunk.map(async (taxon, index) => {
+        try {
+          return { taxon, information: await inspectTaxon(taxon, checked + start + index + 1) }
+        } catch (error) {
+          if (signal?.aborted) throw error
+          return { taxon, error }
+        }
+      }))
+      checked += chunk.length
+      for (const result of results) {
+        if (result.error) {
+          inspectionFailures += 1
+          lastInspectionError = result.error
+        }
+      }
+      sameOrderFound ||= results.some(({ information }) => information &&
+        avoidOrderKey !== null && String(information.orderKey) === String(avoidOrderKey))
+      const useful = results.find(({ information }) => information &&
+        (avoidOrderKey === null || String(information.orderKey) !== String(avoidOrderKey)))
+      if (useful) return { taxon: useful.taxon, information: useful.information, checked }
+    }
+    return null
+  }
+
+  // GBIF's first 99,000 species are heavily biased toward a few large orders.
+  // Sampling Animalia at the order level avoids repeatedly drawing beetles from
+  // that capped slice, then samples species within each selected order.
+  if (String(group.key) === '1') {
+    const orderParams = {
+      datasetKey: GBIF_BACKBONE_KEY,
+      rank: 'ORDER',
+      status: 'ACCEPTED',
+      limit: 0,
+      highertaxonKey: group.key,
+    }
+    const orderCountData = await requestGbif('/species/search', orderParams, { signal, fetchImpl })
+    const orderCount = Math.min(orderCountData.count || 0, 99000)
+    if (orderCount > 0) {
+      const orderPageSize = Math.min(12, orderCount)
+      const seenOrders = new Set()
+      const maxOrderPages = Math.ceil(Math.min(orderCountData.count, 99000) / orderPageSize)
+      for (let pageIndex = 0; pageIndex < maxOrderPages && checked < maxCandidates; pageIndex += 1) {
+        if (signal?.aborted) throw signal.reason
+        const lastOrderStart = Math.max(0, orderCount - orderPageSize)
+        const offset = Math.floor(random() * (lastOrderStart + 1))
+        const orderData = await requestGbif('/species/search', {
+          ...orderParams,
+          limit: orderPageSize,
+          offset,
+        }, { signal, fetchImpl })
+        const orders = (orderData.results || []).filter((order) =>
+          isAcceptedNamedTaxon(order) && order.rank?.toLocaleUpperCase() === 'ORDER' &&
+          !seenOrders.has(order.key) &&
+          (avoidOrderKey === null || String(order.key) !== String(avoidOrderKey)),
+        )
+        for (let index = orders.length - 1; index > 0; index -= 1) {
+          const swapIndex = Math.floor(random() * (index + 1))
+          const current = orders[index]
+          orders[index] = orders[swapIndex]
+          orders[swapIndex] = current
+        }
+        for (const order of orders) {
+          if (checked >= maxCandidates) break
+          seenOrders.add(order.key)
+          const orderSpeciesParams = { ...params, highertaxonKey: order.key, limit: 0 }
+          const speciesCount = await requestGbif('/species/search', orderSpeciesParams, { signal, fetchImpl })
+          if (!Number.isInteger(speciesCount.count) || speciesCount.count < 1) continue
+          const accessibleSpecies = Math.min(speciesCount.count, 99000)
+          const speciesPageSize = Math.min(12, accessibleSpecies)
+          const lastSpeciesStart = Math.max(0, accessibleSpecies - speciesPageSize)
+          const speciesOffset = Math.floor(random() * (lastSpeciesStart + 1))
+          const speciesData = await requestGbif('/species/search', {
+            ...orderSpeciesParams,
+            limit: speciesPageSize,
+            offset: speciesOffset,
+          }, { signal, fetchImpl })
+          const result = await inspectCandidates(speciesData.results)
+          if (result) return result
+        }
+      }
+    }
+  }
+
+  for (let pageIndex = 0; pageIndex < maxPages && checked < maxCandidates; pageIndex += 1) {
+    if (signal?.aborted) throw signal.reason
+    if (seenKeys.size >= accessibleCount) break
+    const lastStart = Math.max(0, accessibleCount - pageSize)
+    const offset = Math.floor(random() * (lastStart + 1))
+    const data = await requestGbif('/species/search', {
+      ...params,
+      limit: pageSize,
+      offset,
+    }, { signal, fetchImpl })
+    const result = await inspectCandidates(data.results?.filter((taxon) => !seenKeys.has(taxon.key)))
+    for (const taxon of data.results || []) seenKeys.add(taxon.key)
+    if (result) return result
+  }
+
+  if (checked === 0) throw new Error('GBIF did not return any usable random species')
+  if (lastInspectionError && inspectionFailures === checked) throw lastInspectionError
+  if (sameOrderFound) {
+    throw new Error(`No informative species outside the previous taxonomic order was found among ${checked} candidates; try again`)
+  }
+  throw new Error(`No random species with a verified photo or description was found among ${checked} candidates`)
 }
 
